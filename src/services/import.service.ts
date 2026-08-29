@@ -2,8 +2,9 @@
  * src/services/import.service.ts
  *
  * Provides importDatabaseFile(): opens the native file picker, copies the selected
- * SQLite file into the app's private storage (Directory.Data), and returns the
- * resolved absolute path ready to hand to db.service.ts's openDatabase().
+ * SQLite file into the app's private storage (Directory.Data), validates its magic
+ * header, and returns the resolved absolute path ready to hand to db.service.ts's
+ * openDatabase().
  *
  * ── Plugin choice: @capawesome/capacitor-file-picker ──────────────────────────
  * Chosen over alternatives for the following reasons:
@@ -60,6 +61,14 @@ export class UserCancelledError extends Error {
   }
 }
 
+/** Thrown when the picked file is not a valid SQLite database (magic header mismatch). */
+export class InvalidDatabaseFileError extends Error {
+  constructor() {
+    super('The selected file is not a valid SQLite database.')
+    this.name = 'InvalidDatabaseFileError'
+  }
+}
+
 /** Filename used when storing the database in the app's private Directory.Data. */
 const DB_PRIVATE_FILENAME = 'ecengine.sqlite'
 
@@ -71,11 +80,18 @@ const DB_PRIVATE_FILENAME = 'ecengine.sqlite'
 const PICK_FILES_CANCELED_MSG = 'pickFiles canceled.'
 
 /**
+ * Expected 16-byte magic header at the beginning of all standard SQLite 3 database files.
+ * ASCII string "SQLite format 3\0".
+ */
+const SQLITE_MAGIC_HEADER = 'SQLite format 3\0'
+
+/**
  * Opens the native file picker, copies the selected SQLite database file into the
- * app's private storage (Directory.Data), and returns the absolute path to use
- * with db.service.ts's openDatabase().
+ * app's private storage (Directory.Data), validates its magic header, and returns
+ * the absolute path to use with db.service.ts's openDatabase().
  *
  * @throws {UserCancelledError} if the user dismisses the picker without selecting a file.
+ * @throws {InvalidDatabaseFileError} if the picked file does not begin with the SQLite magic header.
  * @throws {Error} if no file path was returned by the picker, or if any other
  *                 step (copy, getUri) fails.
  * @returns Absolute path to the database in the app's private storage, with any
@@ -162,6 +178,42 @@ export async function importDatabaseFile(): Promise<string> {
     overwrite: true,
   })
 
-  // ── Step 4: Return the destination path for openDatabase() ───────────────────
+  // ── Step 4: Validate SQLite 3 magic header ──────────────────────────────────
+  //
+  // MIME filtering in the picker is advisory only and not strictly enforced by all
+  // Android file managers. Validating the 16-byte SQLite header ("SQLite format 3\0")
+  // acts as the real validation gate before handing the path over to openDatabase().
+  // If validation fails, we clean up the invalid file from private storage immediately
+  // to avoid leaving a corrupt/stale file behind.
+  let isValidSqlite = false
+  try {
+    const fileData = await Filesystem.readFile({
+      path: DB_PRIVATE_FILENAME,
+      directory: Directory.Data,
+    })
+    const base64 = typeof fileData.data === 'string' ? fileData.data : ''
+    // 24 base64 characters are sufficient to decode the first 16-18 bytes
+    const binaryString = atob(base64.slice(0, 24))
+    const header = binaryString.slice(0, 16)
+    if (header === SQLITE_MAGIC_HEADER) {
+      isValidSqlite = true
+    }
+  } catch {
+    isValidSqlite = false
+  }
+
+  if (!isValidSqlite) {
+    try {
+      await Filesystem.deleteFile({
+        path: DB_PRIVATE_FILENAME,
+        directory: Directory.Data,
+      })
+    } catch (cleanupErr) {
+      console.warn('[import] Failed to clean up invalid database file:', cleanupErr)
+    }
+    throw new InvalidDatabaseFileError()
+  }
+
+  // ── Step 5: Return the validated destination path for openDatabase() ─────────
   return destAbsolutePath
 }
