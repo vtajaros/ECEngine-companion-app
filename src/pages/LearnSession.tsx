@@ -150,7 +150,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
       isCancelled = true
       stop()
     }
-  }, [topicId])
+  }, [topicId, learnSettings, stop])
 
   const currentPartition = partitions[currentPartitionIndex] || []
   const currentCard = activeQueue[currentCardIndex]
@@ -172,8 +172,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
     if (ttsEnabled && currentCard && viewState === 'question' && mcqData?.question) {
       speak(mcqData.question)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentCard?.id, viewState])
+  }, [currentCard, viewState, ttsEnabled, mcqData?.question, speak])
 
   // Solution delay: 0.5s delay before revealing solution in feedback mode
   useEffect(() => {

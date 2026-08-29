@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { TopicBrowser, BrowserMode } from './pages/TopicBrowser'
 import { LearnSession } from './pages/LearnSession'
 import { Settings } from './pages/Settings'
@@ -26,6 +26,17 @@ function App() {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null)
   const [showSettings, setShowSettings] = useState(false)
 
+  const pipelineSettings = useMemo(() => {
+    if (!activeSession) return undefined
+    return toPipelineSettings(activeSession.learnSettings)
+  }, [
+    activeSession?.learnSettings.bookmarkedOnly,
+    activeSession?.learnSettings.shuffleQuestions,
+    activeSession?.learnSettings.shuffleChoices,
+    activeSession?.learnSettings.itemCount,
+    activeSession?.learnSettings.randomSample,
+  ])
+
   if (showSettings) {
     return (
       <Settings
@@ -41,7 +52,7 @@ function App() {
         topicName={activeSession.topicName}
         onExit={() => setActiveSession(null)}
         onOpenSettings={() => setShowSettings(true)}
-        learnSettings={toPipelineSettings(activeSession.learnSettings)}
+        learnSettings={pipelineSettings}
         ttsEnabled={activeSession.learnSettings.ttsEnabled}
       />
     )

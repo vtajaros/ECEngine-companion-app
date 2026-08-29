@@ -61,6 +61,8 @@ function formatTypeChip(type: string): string {
   }
 }
 
+const SUBJECT_ORDER = ['MATH', 'ELECS', 'GEAS', 'EST']
+
 export interface TopicBrowserProps {
   onSelectTopic?: (topic: TopicWithCardCount, mode: BrowserMode, learnSettings?: LearnSettings) => void
   onOpenSettings?: () => void
@@ -155,8 +157,6 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
       return false
     })
   }, [topics, mode, includeMcqInFlashcards])
-
-  const SUBJECT_ORDER = ['MATH', 'ELECS', 'GEAS', 'EST']
 
   // Derive distinct subjects from current mode's topics
   const availableSubjects = useMemo(() => {

@@ -85,7 +85,7 @@ export async function importImagesZip(
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i)
     }
-  } catch (err) {
+  } catch {
     throw new InvalidImageZipError('Failed to decode zip data.')
   }
 
@@ -93,7 +93,7 @@ export async function importImagesZip(
   let entries: Record<string, Uint8Array>
   try {
     entries = unzipSync(bytes)
-  } catch (err) {
+  } catch {
     throw new InvalidImageZipError('Failed to extract zip archive.')
   }
 
@@ -164,6 +164,9 @@ export async function importImagesZip(
       total: totalEntries,
       currentFilename: basename,
     })
+
+    // Yield to the event loop to allow UI to repaint progress updates
+    await new Promise((resolve) => setTimeout(resolve, 0))
   }
 
   if (importedCount === 0) {

@@ -62,12 +62,9 @@ export function shuffleChoices(
     const newChoices = [...shuffledOthers.map(s => s.choice), pinnedChoice]
     
     // Determine new answer index
-    let newAnswer = -1
-    if (pinnedIsAnswer) {
-      newAnswer = newChoices.length - 1
-    } else {
-      newAnswer = shuffledOthers.findIndex(s => s.originalIndex === answerIndex)
-    }
+    const newAnswer = pinnedIsAnswer
+      ? newChoices.length - 1
+      : shuffledOthers.findIndex(s => s.originalIndex === answerIndex)
     
     const result: { choices: string[]; answer: number; choicesPlainText?: boolean[] } = {
       choices: newChoices,

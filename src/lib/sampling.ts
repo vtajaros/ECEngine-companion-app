@@ -6,7 +6,7 @@ export interface CardWithWeight {
   correct_count?: number
   total_count?: number
   last_result?: string | null
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export function plainSample<T>(cards: T[], n: number): T[] {

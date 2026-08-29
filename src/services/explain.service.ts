@@ -101,14 +101,15 @@ STRICT FORMATTING RULES:
     }
 
     return content.trim()
-  } catch (err: any) {
+  } catch (err: unknown) {
     clearTimeout(timeoutId)
     if (err instanceof ExplainError) {
       throw err
     }
-    if (err.name === 'AbortError') {
+    if (err instanceof Error && err.name === 'AbortError') {
       throw new ExplainError('TIMEOUT')
     }
-    throw new ExplainError('NETWORK_ERROR', undefined, err.message || String(err))
+    const message = err instanceof Error ? err.message : String(err)
+    throw new ExplainError('NETWORK_ERROR', undefined, message)
   }
 }

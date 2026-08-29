@@ -98,7 +98,7 @@ function getDb(): SQLiteDBConnection {
 /**
  * Execute a read-only query against the active SQLite connection.
  */
-async function executeQuery<T = any>(statement: string, values: any[] = []): Promise<T[]> {
+async function executeQuery<T = unknown>(statement: string, values: unknown[] = []): Promise<T[]> {
   const connection = getDb()
   const result = await connection.query(statement, values)
   return (result.values || []) as T[]
@@ -255,7 +255,7 @@ export const dbService = {
    */
   getCards: async (topicId?: string): Promise<Card[]> => {
     let sql: string
-    let params: any[] = []
+    let params: unknown[] = []
 
     if (topicId) {
       sql = `

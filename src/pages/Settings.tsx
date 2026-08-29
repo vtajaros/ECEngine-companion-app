@@ -39,6 +39,11 @@ export function Settings({ onClose }: SettingsProps) {
   const [imageError, setImageError] = useState<string | null>(null)
   const [imageSuccess, setImageSuccess] = useState<string | null>(null)
 
+  const refreshImageCount = async () => {
+    const count = await getImportedImageCount()
+    setImageCount(count)
+  }
+
   useEffect(() => {
     Preferences.get({ key: 'groq_api_key' }).then(({ value }) => {
       if (value && value.trim().length > 0) {
@@ -51,11 +56,6 @@ export function Settings({ onClose }: SettingsProps) {
 
     refreshImageCount()
   }, [])
-
-  const refreshImageCount = async () => {
-    const count = await getImportedImageCount()
-    setImageCount(count)
-  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
