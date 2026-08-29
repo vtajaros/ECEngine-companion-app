@@ -7,6 +7,7 @@ import {
   RefreshCw,
   GraduationCap,
   Sigma,
+  Settings as SettingsIcon,
 } from 'lucide-react'
 import { openDatabase, dbService, TopicWithCardCount } from '../services/db.service'
 import { importDatabaseFile, UserCancelledError } from '../services/import.service'
@@ -58,7 +59,12 @@ function formatTypeChip(type: string): string {
   }
 }
 
-export function TopicBrowser() {
+export interface TopicBrowserProps {
+  onSelectTopic?: (topic: TopicWithCardCount, mode: BrowserMode) => void
+  onOpenSettings?: () => void
+}
+
+export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProps = {}) {
   const [mode, setMode] = useState<BrowserMode>('looksfam')
   const [includeMcqInFlashcards, setIncludeMcqInFlashcards] = useState<boolean>(false)
   const [topics, setTopics] = useState<TopicWithCardCount[]>([])
@@ -131,6 +137,8 @@ export function TopicBrowser() {
     })
   }, [topics, mode, includeMcqInFlashcards])
 
+  const SUBJECT_ORDER = ['MATH', 'ELECS', 'GEAS', 'EST']
+
   // Derive distinct subjects from current mode's topics
   const availableSubjects = useMemo(() => {
     const set = new Set<string>()
@@ -139,7 +147,16 @@ export function TopicBrowser() {
         set.add(t.subject.trim())
       }
     })
-    return ['ALL', ...Array.from(set).sort()]
+    const sorted = Array.from(set).sort((a, b) => {
+      const ai = SUBJECT_ORDER.indexOf(a)
+      const bi = SUBJECT_ORDER.indexOf(b)
+      // Unknown subjects (not in SUBJECT_ORDER) sort to the end, alphabetically among themselves
+      if (ai === -1 && bi === -1) return a.localeCompare(b)
+      if (ai === -1) return 1
+      if (bi === -1) return -1
+      return ai - bi
+    })
+    return ['ALL', ...sorted]
   }, [topicsForMode])
 
   // Count topics per subject for badge counters based on current mode
@@ -171,8 +188,11 @@ export function TopicBrowser() {
   }, [topicsForMode, selectedSubject, searchQuery])
 
   const handleCardClick = (topic: TopicWithCardCount) => {
-    // Tapping a card currently logs topic ID and name until a study/preview screen is wired
-    console.log('Selected topic:', topic.id, topic.name, `[Mode: ${mode}]`)
+    if (mode === 'looksfam' && onSelectTopic) {
+      onSelectTopic(topic, mode)
+    } else {
+      console.log('Selected topic:', topic.id, topic.name, `[Mode: ${mode}]`)
+    }
   }
 
   return (
@@ -195,15 +215,27 @@ export function TopicBrowser() {
               </p>
             </div>
           </div>
-          {topics.length > 0 && (
-            <button
-              onClick={fetchTopics}
-              title="Refresh topics"
-              className="p-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-[#00ff41] active:scale-95 transition-all"
-            >
-              <RefreshCw size={15} className={isLoading ? 'animate-spin text-[#00ff41]' : ''} />
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {topics.length > 0 && (
+              <button
+                onClick={fetchTopics}
+                title="Refresh topics"
+                className="p-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-[#00ff41] active:scale-95 transition-all"
+              >
+                <RefreshCw size={15} className={isLoading ? 'animate-spin text-[#00ff41]' : ''} />
+              </button>
+            )}
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                title="Settings"
+                className="p-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-[#00ff41] active:scale-95 transition-all"
+              >
+                <SettingsIcon size={15} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Search Input */}
