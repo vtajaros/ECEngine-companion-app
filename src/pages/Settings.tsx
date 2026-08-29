@@ -24,10 +24,9 @@ import {
 
 export interface SettingsProps {
   onClose: () => void
-  onOpenTTSTest?: () => void
 }
 
-export function Settings({ onClose, onOpenTTSTest }: SettingsProps) {
+export function Settings({ onClose }: SettingsProps) {
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [hasSavedKey, setHasSavedKey] = useState<boolean | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -369,28 +368,6 @@ export function Settings({ onClose, onOpenTTSTest }: SettingsProps) {
             </div>
           </div>
 
-          {/* Diagnostics Section (Temporary) */}
-          {onOpenTTSTest && (
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-neutral-200">
-                    Text-to-Speech (TTS) Diagnostics
-                  </h3>
-                  <p className="text-xs text-neutral-400 mt-0.5">
-                    Temporary standalone tool to verify WebView speech synthesis on Android
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={onOpenTTSTest}
-                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-bold uppercase tracking-wider text-amber-400 hover:bg-amber-500/20 active:scale-95 transition-all"
-                >
-                  Open Test
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </main>
     </div>

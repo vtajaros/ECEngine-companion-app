@@ -7,11 +7,13 @@ import {
   RefreshCw,
   GraduationCap,
   Sigma,
+  Settings as SettingsIcon,
+  Play,
   } from 'lucide-react'
-import { Settings as SettingsIcon } from 'lucide-react'
 import { openDatabase, dbService, TopicWithCardCount, getPreviouslyImportedDbPath } from '../services/db.service'
 import { importDatabaseFile, UserCancelledError } from '../services/import.service'
 import { getSubjectBadgeClasses, getSubjectFilterClasses, SUBJECT_MAP } from '../lib/subjectColors'
+import { LearnSettingsModal, LearnSettings, DEFAULT_LEARN_SETTINGS } from '../components/LearnSettingsModal'
 
 export type BrowserMode = 'looksfam' | 'flashcards' | 'formulas'
 export type DeckType = 'mcq' | 'flashcard' | 'formula' | 'mixed' | null
@@ -60,7 +62,7 @@ function formatTypeChip(type: string): string {
 }
 
 export interface TopicBrowserProps {
-  onSelectTopic?: (topic: TopicWithCardCount, mode: BrowserMode) => void
+  onSelectTopic?: (topic: TopicWithCardCount, mode: BrowserMode, learnSettings?: LearnSettings) => void
   onOpenSettings?: () => void
 }
 
@@ -73,6 +75,10 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [selectedSubject, setSelectedSubject] = useState<string>('ALL')
+
+  // Learn Settings Modal state
+  const [learnModalTopic, setLearnModalTopic] = useState<TopicWithCardCount | null>(null)
+  const [learnSettings, setLearnSettings] = useState<LearnSettings>({ ...DEFAULT_LEARN_SETTINGS })
 
   // Fetch topics on mount
   const fetchTopics = async () => {
@@ -200,12 +206,13 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
     })
   }, [topicsForMode, selectedSubject, searchQuery])
 
-  const handleCardClick = (topic: TopicWithCardCount) => {
-    if (mode === 'looksfam' && onSelectTopic) {
-      onSelectTopic(topic, mode)
-    } else {
-      console.log('Selected topic:', topic.id, topic.name, `[Mode: ${mode}]`)
-    }
+
+  const handleLearnStart = () => {
+    if (!learnModalTopic || !onSelectTopic) return
+    const topic = learnModalTopic
+    const settings = learnSettings
+    setLearnModalTopic(null)
+    onSelectTopic(topic, 'looksfam', settings)
   }
 
   return (
@@ -422,15 +429,7 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
                 return (
                   <div
                     key={topic.id}
-                    onClick={() => handleCardClick(topic)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        handleCardClick(topic)
-                      }
-                    }}
-                    className="group relative flex flex-col justify-between rounded-xl border border-neutral-800 bg-neutral-900/80 p-4 transition-all duration-200 hover:border-neutral-700 hover:bg-neutral-900 active:scale-[0.99] cursor-pointer shadow-sm"
+                    className="group relative flex flex-col justify-between rounded-xl border border-neutral-800 bg-neutral-900/80 p-4 transition-all duration-200 hover:border-neutral-700 hover:bg-neutral-900 shadow-sm"
                   >
                     {/* Top Row: Subject Badge & Card Count */}
                     <div>
@@ -458,27 +457,44 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
                       )}
                     </div>
 
-                    {/* Bottom Row: Type Chips and Tags */}
-                    <div className="mt-3.5 flex flex-wrap items-center gap-1.5 pt-2.5 border-t border-neutral-800/60">
-                      {parsedTypes.map((type) => (
-                        <span
-                          key={type}
-                          className="rounded bg-neutral-950/80 px-2 py-0.5 text-[10px] font-medium tracking-wide text-neutral-300 border border-neutral-800"
-                        >
-                          {formatTypeChip(type)}
-                        </span>
-                      ))}
-
-                      {/* Render custom tags if available (capped at 2 for mobile compactness) */}
-                      {topic.tags &&
-                        topic.tags.slice(0, 2).map((tag) => (
+                    {/* Bottom Row: Type Chips and Learn Button */}
+                    <div className="mt-3.5 flex flex-wrap items-center justify-between gap-1.5 pt-2.5 border-t border-neutral-800/60">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {parsedTypes.map((type) => (
                           <span
-                            key={tag}
-                            className="rounded bg-neutral-950/40 px-1.5 py-0.5 text-[10px] text-neutral-400 border border-neutral-800/60"
+                            key={type}
+                            className="rounded bg-neutral-950/80 px-2 py-0.5 text-[10px] font-medium tracking-wide text-neutral-300 border border-neutral-800"
                           >
-                            #{tag}
+                            {formatTypeChip(type)}
                           </span>
                         ))}
+
+                        {/* Render custom tags if available (capped at 2 for mobile compactness) */}
+                        {topic.tags &&
+                          topic.tags.slice(0, 2).map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded bg-neutral-950/80 px-2 py-0.5 text-[10px] font-medium tracking-wide text-neutral-300 border border-neutral-800"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                      </div>
+
+                      {/* Learn button — only shown in looksfam mode */}
+                      {mode === 'looksfam' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLearnSettings({ ...DEFAULT_LEARN_SETTINGS })
+                            setLearnModalTopic(topic)
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#00ff41]/10 border border-[#00ff41]/25 px-4 py-2 text-xs font-bold uppercase tracking-wider text-[#00ff41] hover:bg-[#00ff41]/20 hover:border-[#00ff41]/50 active:scale-95 transition-all"
+                        >
+                          <Play size={13} className="fill-[#00ff41]" />
+                          Learn
+                        </button>
+                      )}
                     </div>
                   </div>
                 )
@@ -540,6 +556,15 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
           </button>
         </div>
       </nav>
+      {/* Learn Settings Modal */}
+      <LearnSettingsModal
+        isOpen={learnModalTopic !== null}
+        cardCount={learnModalTopic?.cardCount ?? 0}
+        settings={learnSettings}
+        onSettingsChange={setLearnSettings}
+        onStart={handleLearnStart}
+        onClose={() => setLearnModalTopic(null)}
+      />
     </div>
   )
 }

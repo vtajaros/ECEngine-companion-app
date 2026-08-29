@@ -6,12 +6,20 @@ import { Card, MCQData } from '../types'
 import { ExplanationPanel } from '../components/ExplanationPanel'
 import { resolveImageSrc } from '../services/image.service'
 import { ImageLightbox } from '../components/ImageLightbox'
+import { buildLearnQueue } from '../lib/learnPipeline'
+import type { LearnPipelineSettings } from '../lib/learnPipeline'
+import { reshuffleCardChoices } from '../lib/scrambler'
+import { useTTS } from '../hooks/useTTS'
+import { App as CapacitorApp } from '@capacitor/app'
+import { LeaveConfirmModal } from '../components/LeaveConfirmModal'
 
 interface LearnSessionProps {
   topicId: string
   topicName?: string
   onExit: () => void
   onOpenSettings?: () => void
+  learnSettings?: LearnPipelineSettings
+  ttsEnabled?: boolean
 }
 
 /**
@@ -34,7 +42,8 @@ export function partitionCards(cards: Card[], partitionSize = 5, minTrailingSize
   return partitions
 }
 
-export function LearnSession({ topicId, topicName, onExit, onOpenSettings }: LearnSessionProps) {
+export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learnSettings, ttsEnabled }: LearnSessionProps) {
+  const { speak, stop } = useTTS()
   const [cards, setCards] = useState<Card[]>([])
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set())
   const [partitions, setPartitions] = useState<Card[][]>([])
@@ -45,8 +54,8 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings }: Lea
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
   const [partitionWrongIds, setPartitionWrongIds] = useState<Set<string>>(new Set())
 
-  // Session-scoped attempt tracking (first attempt dictates wasCorrectFirstTry)
-  const [cardStats, setCardStats] = useState<Record<string, { wasCorrectFirstTry: boolean; attemptCount: number }>>({})
+  // Session-scoped attempt tracking (first attempt dictates wasCorrectFirstTry and usedIDK)
+  const [cardStats, setCardStats] = useState<Record<string, { wasCorrectFirstTry: boolean; usedIDK: boolean; attemptCount: number }>>({})
 
   // ID of summary review card with AI explanation currently expanded (null = none)
   const [openExplanationRowId, setOpenExplanationRowId] = useState<string | null>(null)
@@ -74,6 +83,29 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings }: Lea
   const [isAnswered, setIsAnswered] = useState(false)
   const [viewState, setViewState] = useState<'question' | 'feedback' | 'round-complete' | 'set-complete'>('question')
 
+  // Exit confirmation modal state
+  const [showExitConfirm, setShowExitConfirm] = useState(false)
+  const isActiveStudyState = viewState === 'question' || viewState === 'feedback'
+  const isActiveStudyStateRef = useRef(isActiveStudyState)
+
+  useEffect(() => {
+    isActiveStudyStateRef.current = isActiveStudyState
+  }, [isActiveStudyState])
+
+  // Intercept hardware/gesture back button on Android
+  useEffect(() => {
+    const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      if (isActiveStudyStateRef.current) {
+        setShowExitConfirm(true)
+      } else {
+        onExit()
+      }
+    })
+    return () => {
+      listenerPromise.then((handle) => handle.remove())
+    }
+  }, [onExit])
+
   // Fetch topic cards on mount (cards + bookmarks fire in parallel)
   useEffect(() => {
     let isCancelled = false
@@ -85,12 +117,14 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings }: Lea
       dbService.getAllCardsByTopic(topicId),
       bookmarkService.getAll(),
     ])
-      .then(([allCards, savedBookmarks]) => {
+      .then(async ([allCards, savedBookmarks]) => {
         if (isCancelled) return
         const mcqCards = allCards.filter((c) => c.type === 'mcq')
-        setCards(mcqCards)
+        // Run the pipeline (filter/shuffle/sample) if settings were provided
+        const queue = learnSettings ? await buildLearnQueue(mcqCards, learnSettings) : mcqCards
+        setCards(queue)
         setBookmarkedIds(savedBookmarks)
-        const parts = partitionCards(mcqCards, 5, 3)
+        const parts = partitionCards(queue, 5, 3)
         setPartitions(parts)
         setCurrentPartitionIndex(0)
         setActiveQueue(parts[0] ? [...parts[0]] : [])
@@ -114,6 +148,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings }: Lea
 
     return () => {
       isCancelled = true
+      stop()
     }
   }, [topicId])
 
@@ -131,6 +166,14 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings }: Lea
     const updated = await bookmarkService.toggle(currentCard.id)
     setBookmarkedIds(updated)
   }
+
+  // TTS: speak the question when a new card is shown in question state
+  useEffect(() => {
+    if (ttsEnabled && currentCard && viewState === 'question' && mcqData?.question) {
+      speak(mcqData.question)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentCard?.id, viewState])
 
   // Solution delay: 0.5s delay before revealing solution in feedback mode
   useEffect(() => {
@@ -206,30 +249,35 @@ Please explain:
     })
   }
 
-  const handleSelectChoice = (choiceIndex: number) => {
+  const submitAnswer = (choiceIdx: number | 'idk') => {
     if (isAnswered || viewState !== 'question' || !currentCard || !mcqData) return
 
-    const cardId = currentCard.id
-    const isCorrect = choiceIndex === mcqData.answer
+    // Stop TTS when user selects an answer — mirrors desktop's stop-on-answer behavior
+    stop()
 
-    setSelectedChoiceIndex(choiceIndex)
+    const isIdk = choiceIdx === 'idk'
+    const isCorrect = !isIdk && choiceIdx === mcqData.answer
+    const cardId = currentCard.id
+
+    setSelectedChoiceIndex(isIdk ? null : choiceIdx)
     setIsAnswered(true)
     setViewState('feedback')
 
-    // Track first-try flawless stat once per card
+    // Track first-try flawless stat and IDK status once per card
     setCardStats((prev) => {
-      const prevStat = prev[cardId] ?? { wasCorrectFirstTry: false, attemptCount: 0 }
+      const prevStat = prev[cardId] ?? { wasCorrectFirstTry: false, usedIDK: false, attemptCount: 0 }
       const isFirstAttempt = prevStat.attemptCount === 0
       return {
         ...prev,
         [cardId]: {
           attemptCount: prevStat.attemptCount + 1,
           wasCorrectFirstTry: isFirstAttempt ? isCorrect : prevStat.wasCorrectFirstTry,
+          usedIDK: isFirstAttempt ? isIdk : prevStat.usedIDK,
         },
       }
     })
 
-    // Track wrong answers for recycling in the current pass
+    // Track wrong answers for recycling in the current pass (IDK is treated as wrong)
     setPartitionWrongIds((prev) => {
       const next = new Set(prev)
       if (isCorrect) {
@@ -269,8 +317,10 @@ Please explain:
           setViewState('round-complete')
         }
       } else {
-        // Recycle missed cards for another pass
-        const nextQueue = activeQueue.filter((c) => partitionWrongIds.has(c.id))
+        // Recycle missed cards for another pass (reshuffle choices if shuffleChoices is on)
+        const nextQueue = activeQueue
+          .filter((c) => partitionWrongIds.has(c.id))
+          .map((c) => (learnSettings?.shuffleChoices ? reshuffleCardChoices(c) : c))
         setActiveQueue(nextQueue)
         setCurrentCardIndex(0)
         setPartitionWrongIds(new Set())
@@ -325,7 +375,13 @@ Please explain:
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
-              onClick={onExit}
+              onClick={() => {
+                if (isActiveStudyState) {
+                  setShowExitConfirm(true)
+                } else {
+                  onExit()
+                }
+              }}
               className="p-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-neutral-200 active:scale-95 transition-all shrink-0"
               title="Exit session"
             >
@@ -521,7 +577,7 @@ Please explain:
                       key={idx}
                       type="button"
                       disabled={isAnswered}
-                      onClick={() => handleSelectChoice(idx)}
+                      onClick={() => submitAnswer(idx)}
                       className={`flex items-start gap-3 rounded-xl border p-3.5 sm:p-4 text-left transition-all active:scale-[0.99] ${btnStyle}`}
                     >
                       <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border font-mono text-xs font-bold leading-none ${badgeStyle}`}>
@@ -534,6 +590,19 @@ Please explain:
                   )
                 })}
               </div>
+
+              {/* I Don't Know Button */}
+              {viewState === 'question' && (
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => submitAnswer('idk')}
+                    className="px-8 py-2.5 rounded-xl border border-neutral-700 bg-neutral-900 text-neutral-400 hover:bg-neutral-800 hover:border-neutral-600 hover:text-neutral-200 active:scale-95 transition-all text-xs font-bold uppercase tracking-wider"
+                  >
+                    I Don't Know
+                  </button>
+                </div>
+              )}
 
               {/* Solution Field (Feedback state, gated by showSolution) */}
               {viewState === 'feedback' && showSolution && ((mcqData.explanation && mcqData.explanation.trim() !== '') || solutionImageSrc) && (
@@ -658,7 +727,12 @@ Please explain:
                           Q{partitionStartPos + idx + 1}
                         </span>
                         <div className="flex items-center gap-2">
-                          {!isFlawless && (
+                          {!isFlawless && stat?.usedIDK && (
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              IDK
+                            </span>
+                          )}
+                          {!isFlawless && !stat?.usedIDK && (
                             <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
                               Missed
                             </span>
@@ -757,7 +831,12 @@ Please explain:
                           Q{idx + 1}
                         </span>
                         <div className="flex items-center gap-2">
-                          {!isFlawless && (
+                          {!isFlawless && stat?.usedIDK && (
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              IDK
+                            </span>
+                          )}
+                          {!isFlawless && !stat?.usedIDK && (
                             <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
                               Missed
                             </span>
@@ -834,6 +913,17 @@ Please explain:
         src={lightboxSrc}
         alt="Diagram"
         onClose={() => setLightboxSrc(null)}
+      />
+
+      {/* Leave Confirmation Modal */}
+      <LeaveConfirmModal
+        isOpen={showExitConfirm}
+        onConfirm={() => {
+          stop() // cancel any in-flight TTS speech, matches desktop
+          setShowExitConfirm(false)
+          onExit()
+        }}
+        onCancel={() => setShowExitConfirm(false)}
       />
     </div>
   )

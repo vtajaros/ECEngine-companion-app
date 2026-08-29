@@ -1,4 +1,5 @@
 import { shuffleArray } from './utils'
+import { Card, MCQData } from '../types'
 
 // Re-export for backward compatibility
 export const shuffle = shuffleArray
@@ -94,4 +95,29 @@ export function shuffleChoices(
     result.choicesPlainText = shuffled.map(s => choicesPlainText[s.originalIndex])
   }
   return result
+}
+
+/**
+ * Reshuffle the choices of an MCQ card if safe to do so.
+ */
+export function reshuffleCardChoices(card: Card): Card {
+  if (
+    card.type === 'mcq' &&
+    card.data &&
+    Array.isArray((card.data as MCQData).choices) &&
+    isSafeToShuffleChoices((card.data as MCQData).choices)
+  ) {
+    const mcq = card.data as MCQData
+    const sc = shuffleChoices(mcq.choices, mcq.answer, mcq.choicesPlainText)
+    return {
+      ...card,
+      data: {
+        ...mcq,
+        choices: sc.choices,
+        answer: sc.answer,
+        ...(sc.choicesPlainText ? { choicesPlainText: sc.choicesPlainText } : {}),
+      },
+    }
+  }
+  return card
 }

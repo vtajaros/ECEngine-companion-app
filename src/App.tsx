@@ -2,29 +2,34 @@ import { useState } from 'react'
 import { TopicBrowser, BrowserMode } from './pages/TopicBrowser'
 import { LearnSession } from './pages/LearnSession'
 import { Settings } from './pages/Settings'
-import { TTSTest } from './pages/TTSTest'
+import { LearnSettings, DEFAULT_LEARN_SETTINGS } from './components/LearnSettingsModal'
+import type { LearnPipelineSettings } from './lib/learnPipeline'
 
 interface ActiveSession {
   topicId: string
   topicName?: string
   mode: BrowserMode
+  learnSettings: LearnSettings
+}
+
+function toPipelineSettings(s: LearnSettings): LearnPipelineSettings {
+  return {
+    bookmarkedOnly: s.bookmarkedOnly,
+    shuffleQuestions: s.shuffleQuestions,
+    shuffleChoices: s.shuffleChoices,
+    itemCount: s.itemCount,
+    randomSample: s.randomSample,
+  }
 }
 
 function App() {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null)
   const [showSettings, setShowSettings] = useState(false)
-  const [showTTSTest, setShowTTSTest] = useState(false)
-
-  // Temporary route for standalone TTS verification
-  if (showTTSTest) {
-    return <TTSTest onClose={() => setShowTTSTest(false)} />
-  }
 
   if (showSettings) {
     return (
       <Settings
         onClose={() => setShowSettings(false)}
-        onOpenTTSTest={() => setShowTTSTest(true)}
       />
     )
   }
@@ -36,6 +41,8 @@ function App() {
         topicName={activeSession.topicName}
         onExit={() => setActiveSession(null)}
         onOpenSettings={() => setShowSettings(true)}
+        learnSettings={toPipelineSettings(activeSession.learnSettings)}
+        ttsEnabled={activeSession.learnSettings.ttsEnabled}
       />
     )
   }
@@ -43,12 +50,13 @@ function App() {
   return (
     <TopicBrowser
       onOpenSettings={() => setShowSettings(true)}
-      onSelectTopic={(topic, mode) => {
+      onSelectTopic={(topic, mode, learnSettings) => {
         if (mode === 'looksfam') {
           setActiveSession({
             topicId: topic.id,
             topicName: topic.name,
             mode,
+            learnSettings: learnSettings ?? DEFAULT_LEARN_SETTINGS,
           })
         }
       }}
