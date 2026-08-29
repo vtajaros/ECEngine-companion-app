@@ -13,6 +13,7 @@ import { useTTS } from '../hooks/useTTS'
 import { useSound } from '../hooks/useSound'
 import { App as CapacitorApp } from '@capacitor/app'
 import { LeaveConfirmModal } from '../components/LeaveConfirmModal'
+import { copyToClipboard } from '../services/clipboard.service'
 
 interface LearnSessionProps {
   topicId: string
@@ -225,7 +226,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
     .slice(0, currentPartitionIndex)
     .reduce((acc, part) => acc + part.length, 0)
 
-  const handleGetContext = () => {
+  const handleGetContext = async () => {
     if (!mcqData) return
     const choicesBlock = mcqData.choices
       .map((c, i) => `${String.fromCharCode(65 + i)}. ${c}`)
@@ -247,10 +248,11 @@ Please explain:
 3. Any relevant formula, law, or concept that applies
 4. A memory tip or way to remember this for the board exam
 ---`
-    navigator.clipboard.writeText(template).then(() => {
+    const success = await copyToClipboard(template)
+    if (success) {
       setShowContextToast(true)
       setTimeout(() => setShowContextToast(false), 2500)
-    })
+    }
   }
 
   const submitAnswer = (choiceIdx: number | 'idk') => {

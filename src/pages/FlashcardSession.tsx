@@ -21,6 +21,7 @@ import { ImageLightbox } from '../components/ImageLightbox'
 import { LeaveConfirmModal } from '../components/LeaveConfirmModal'
 import { useTTS } from '../hooks/useTTS'
 import { App as CapacitorApp } from '@capacitor/app'
+import { copyToClipboard } from '../services/clipboard.service'
 
 interface FlashcardSessionProps {
   topicId: string
@@ -185,15 +186,17 @@ export function FlashcardSession({
     setIsCompleted(false)
   }
 
-  // TTS: speak front text when a new card is presented (unflipped) — skip for formulas
+  // TTS: speak card text whenever currentCard or flip state changes — skip for formulas
   useEffect(() => {
-    if (cardType !== 'formula' && settings.ttsEnabled && currentCard && !isFlipped && !isCompleted) {
-      const textToSpeak = getFrontText(currentCard, settings.swapTermDef)
+    if (cardType !== 'formula' && settings.ttsEnabled && currentCard && !isCompleted) {
+      const textToSpeak = isFlipped
+        ? getBackText(currentCard, settings.swapTermDef)
+        : getFrontText(currentCard, settings.swapTermDef)
       speak(textToSpeak)
     }
   }, [currentCard, isFlipped, isCompleted, settings.ttsEnabled, settings.swapTermDef, cardType, speak])
 
-  const handleGetContext = () => {
+  const handleGetContext = async () => {
     if (!currentCard) return
     const term = getFrontText(currentCard, settings.swapTermDef)
     const definition = getBackText(currentCard, settings.swapTermDef)
@@ -231,10 +234,11 @@ Provide a thorough explanation covering ALL of the following:
    - Provide a mnemonic, analogy, or mental model to remember this.
    - Give a one-sentence summary that captures the essence of the concept.`
 
-    navigator.clipboard.writeText(template).then(() => {
+    const success = await copyToClipboard(template)
+    if (success) {
       setShowContextToast(true)
       setTimeout(() => setShowContextToast(false), 2500)
-    })
+    }
   }
 
   return (

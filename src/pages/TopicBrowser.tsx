@@ -391,13 +391,7 @@ export function TopicBrowser({
                     }`}
                   >
                     <span>{sub}</span>
-                    <span
-                      className={`rounded px-1 text-[10px] font-mono leading-none ${
-                        isActive
-                          ? 'bg-black/20 text-current'
-                          : 'bg-neutral-800 text-neutral-400'
-                      }`}
-                    >
+                    <span className="text-[10px] font-mono leading-none">
                       {count}
                     </span>
                   </button>

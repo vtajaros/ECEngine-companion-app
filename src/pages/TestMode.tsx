@@ -23,6 +23,7 @@ import { resolveImageSrc } from '../services/image.service'
 import { weightedSample, plainSample } from '../lib/sampling'
 import { App as CapacitorApp } from '@capacitor/app'
 import { TestNavRail } from '../components/TestNavRail'
+import { copyToClipboard } from '../services/clipboard.service'
 import { useSound } from '../hooks/useSound'
 
 export interface TestSettings {
@@ -513,7 +514,7 @@ export function TestMode({ cards, title, settings, onComplete, onExit }: TestMod
   }, [testCards, answers, bookmarkedIds.size, onComplete, play])
 
   // Get context for LLM
-  const handleGetContext = useCallback((mcq: MCQData) => {
+  const handleGetContext = useCallback(async (mcq: MCQData) => {
     const template = `---
 Please explain the correct answer to this multiple choice question:
 
@@ -534,10 +535,11 @@ Please explain:
 3. Any relevant formula, law, or concept that applies
 4. A memory tip or way to remember this for the board exam
 ---`
-    navigator.clipboard.writeText(template).then(() => {
+    const success = await copyToClipboard(template)
+    if (success) {
       setShowContextToast(true)
       setTimeout(() => setShowContextToast(false), 2500)
-    })
+    }
   }, [])
 
   const handleToggleExplanation = useCallback((index: number) => {

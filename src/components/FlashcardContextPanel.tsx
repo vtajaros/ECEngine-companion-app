@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Sparkles, Terminal, Copy, Check, AlertCircle, X } from 'lucide-react'
 import { getFlashcardExplanation, ExplainError } from '../services/explain.service'
 import { renderMath } from '../lib/latex'
+import { copyToClipboard } from '../services/clipboard.service'
 
 export interface FlashcardContextPanelProps {
   term: string
@@ -56,12 +57,13 @@ export function FlashcardContextPanel({
     }
   }, [term, definition])
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!explanation) return
-    navigator.clipboard.writeText(explanation).then(() => {
+    const success = await copyToClipboard(explanation)
+    if (success) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    })
+    }
   }
 
   return (
