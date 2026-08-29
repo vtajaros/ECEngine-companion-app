@@ -831,15 +831,15 @@ export function TestPaperView({
       </header>
 
       {/* ── Toolbar ────────────────────────────────────────────────────────── */}
-      <div className="sticky top-[49px] z-30 flex flex-wrap items-center gap-2 border-b border-neutral-800 bg-neutral-900/90 px-3 py-2 backdrop-blur-md shrink-0 justify-start sm:justify-center">
+      <div className="sticky top-[49px] z-30 flex flex-nowrap items-center gap-1.5 border-b border-neutral-800 bg-neutral-900/90 px-2 py-1.5 backdrop-blur-md shrink-0 justify-start sm:justify-center">
         {/* Layout Toggle */}
-        <div className="flex items-center gap-1 bg-neutral-950/80 p-1 rounded-lg border border-neutral-800 shrink-0">
+        <div className="flex items-center gap-0.5 bg-neutral-950/80 p-0.5 rounded-lg border border-neutral-800 shrink-0">
           <button
             type="button"
             disabled={hasFormulas}
             onClick={() => setLayout('glossary')}
             title={hasFormulas ? 'Glossary not supported with formulas' : 'Glossary / List Layout'}
-            className={`p-1.5 rounded-md text-xs font-medium transition-all ${
+            className={`p-1 rounded-md text-[11px] font-medium transition-all ${
               hasFormulas
                 ? 'opacity-40 cursor-not-allowed text-neutral-500'
                 : effectiveLayout === 'glossary'
@@ -847,19 +847,19 @@ export function TestPaperView({
                   : 'text-neutral-400 hover:text-white'
             }`}
           >
-            <List size={14} />
+            <List size={13} />
           </button>
           <button
             type="button"
             onClick={() => setLayout('table')}
             title="Table Layout"
-            className={`p-1.5 rounded-md text-xs font-medium transition-all ${
+            className={`p-1 rounded-md text-[11px] font-medium transition-all ${
               effectiveLayout === 'table'
                 ? 'bg-[#00ff41] text-black font-bold shadow-[0_0_8px_rgba(0,255,65,0.25)]'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
-            <Table2 size={14} />
+            <Table2 size={13} />
           </button>
           {!isFlashcardOnly && (
             <button
@@ -867,7 +867,7 @@ export function TestPaperView({
               disabled={hasFormulas}
               onClick={() => setLayout('qa')}
               title={hasFormulas ? 'Q&A not supported with formulas' : 'Q&A Layout'}
-              className={`p-1.5 rounded-md text-xs font-medium transition-all ${
+              className={`p-1 rounded-md text-[11px] font-medium transition-all ${
                 hasFormulas
                   ? 'opacity-40 cursor-not-allowed text-neutral-500'
                   : effectiveLayout === 'qa'
@@ -875,51 +875,51 @@ export function TestPaperView({
                     : 'text-neutral-400 hover:text-white'
               }`}
             >
-              <BookOpen size={14} />
+              <BookOpen size={13} />
             </button>
           )}
         </div>
 
         {/* Flashcard Bold Side Toggle */}
         {flashcardCards.length > 0 && effectiveLayout !== 'qa' && (
-          <div className="flex items-center gap-1 bg-neutral-950/80 p-1 rounded-lg border border-neutral-800 shrink-0">
+          <div className="flex items-center gap-0.5 bg-neutral-950/80 p-0.5 rounded-lg border border-neutral-800 shrink-0">
             <button
               type="button"
               onClick={() => setBoldSide('term')}
               title="Bold Term"
-              className={`flex items-center gap-0.5 px-2 py-1 rounded-md text-xs font-bold transition-all ${
+              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all ${
                 boldSide === 'term'
                   ? 'bg-[#00ff41] text-black shadow-[0_0_8px_rgba(0,255,65,0.25)]'
                   : 'text-neutral-400 hover:text-white'
               }`}
             >
-              <Bold size={12} />
+              <Bold size={11} />
               <span className="text-[10px]">T</span>
             </button>
             <button
               type="button"
               onClick={() => setBoldSide('definition')}
               title="Bold Definition"
-              className={`flex items-center gap-0.5 px-2 py-1 rounded-md text-xs font-bold transition-all ${
+              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all ${
                 boldSide === 'definition'
                   ? 'bg-[#00ff41] text-black shadow-[0_0_8px_rgba(0,255,65,0.25)]'
                   : 'text-neutral-400 hover:text-white'
               }`}
             >
-              <Bold size={12} />
+              <Bold size={11} />
               <span className="text-[10px]">D</span>
             </button>
           </div>
         )}
 
         {/* Theme Picker */}
-        <div className="flex items-center gap-1 bg-neutral-950/80 p-1 rounded-lg border border-neutral-800 shrink-0">
+        <div className="flex items-center gap-0.5 bg-neutral-950/80 p-0.5 rounded-lg border border-neutral-800 shrink-0">
           {(['light', 'sepia', 'dark'] as const).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setTheme(t)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider transition-all ${
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
                 theme === t
                   ? 'bg-[#00ff41] text-black shadow-[0_0_8px_rgba(0,255,65,0.25)]'
                   : 'text-neutral-400 hover:text-white'
@@ -932,13 +932,13 @@ export function TestPaperView({
 
         {/* MCQ Answers / Solutions Toggles */}
         {mcqCards.length > 0 && (
-          <div className="flex items-center gap-2 bg-neutral-950/80 px-2.5 py-1 rounded-lg border border-neutral-800 shrink-0 text-xs font-bold uppercase tracking-wider">
-            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+          <div className="flex items-center gap-1.5 bg-neutral-950/80 px-2 py-1 rounded-lg border border-neutral-800 shrink-0 text-[10px] font-bold uppercase tracking-wider">
+            <label className="flex items-center gap-1 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={showAnswers}
                 onChange={(e) => setShowAnswers(e.target.checked)}
-                className="accent-[#00ff41] w-3.5 h-3.5 cursor-pointer rounded"
+                className="accent-[#00ff41] w-3 h-3 cursor-pointer rounded"
               />
               <span className={showAnswers ? 'text-[#00ff41]' : 'text-neutral-400'}>ANS</span>
             </label>
@@ -948,12 +948,12 @@ export function TestPaperView({
                 (c.data.explanation && c.data.explanation.trim().length > 0) ||
                 !!c.data.solutionImagePath
             ) && (
-              <label className="flex items-center gap-1.5 cursor-pointer select-none border-l border-neutral-800 pl-2">
+              <label className="flex items-center gap-1 cursor-pointer select-none border-l border-neutral-800 pl-1.5">
                 <input
                   type="checkbox"
                   checked={showSolutions}
                   onChange={(e) => setShowSolutions(e.target.checked)}
-                  className="accent-[#00ff41] w-3.5 h-3.5 cursor-pointer rounded"
+                  className="accent-[#00ff41] w-3 h-3 cursor-pointer rounded"
                 />
                 <span className={showSolutions ? 'text-[#00ff41]' : 'text-neutral-400'}>
                   SOL&apos;N
@@ -968,7 +968,7 @@ export function TestPaperView({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-6 flex justify-center"
+        className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-6 flex justify-center items-start"
         style={{ backgroundColor: activeThemeVars['--pt-bg-outer'] }}
       >
         {loading ? (
@@ -978,7 +978,7 @@ export function TestPaperView({
           </div>
         ) : (
           <div
-            className="w-full max-w-3xl rounded-2xl shadow-2xl p-4 sm:p-10 transition-colors duration-200"
+            className="w-full max-w-3xl min-h-full rounded-2xl shadow-2xl p-4 sm:p-10 transition-colors duration-200"
             style={{
               ...activeThemeVars,
               backgroundColor: activeThemeVars['--pt-bg-paper'],

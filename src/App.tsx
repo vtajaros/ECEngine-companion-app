@@ -7,6 +7,7 @@ import { FlashcardSession } from './pages/FlashcardSession'
 import { Settings } from './pages/Settings'
 import { LearnSettings, DEFAULT_LEARN_SETTINGS } from './components/LearnSettingsModal'
 import { DEFAULT_TEST_SETTINGS } from './components/TestSettingsModal'
+import { FlashcardSettings, DEFAULT_FLASHCARD_SETTINGS } from './components/FlashcardSettingsModal'
 import type { LearnPipelineSettings } from './lib/learnPipeline'
 import { dbService } from './services/db.service'
 import { Card } from './types'
@@ -17,6 +18,7 @@ interface ActiveSession {
   mode: BrowserMode
   learnSettings?: LearnSettings
   testSettings?: TestSettings
+  flashcardSettings?: FlashcardSettings
 }
 
 function toPipelineSettings(s: LearnSettings): LearnPipelineSettings {
@@ -130,13 +132,15 @@ function App() {
     )
   }
 
-  if (activeSession && activeSession.mode === 'flashcards') {
+  if (activeSession && (activeSession.mode === 'flashcards' || activeSession.mode === 'formulas')) {
     return (
       <FlashcardSession
         topicId={activeSession.topicId}
         topicName={activeSession.topicName}
         onExit={() => setActiveSession(null)}
         onOpenSettings={() => setShowSettings(true)}
+        initialSettings={activeSession.flashcardSettings}
+        cardType={activeSession.mode === 'formulas' ? 'formula' : 'flashcard'}
       />
     )
   }
@@ -152,7 +156,7 @@ function App() {
       scrollPosition={scrollPosition}
       onScrollPositionChange={setScrollPosition}
       onOpenSettings={() => setShowSettings(true)}
-      onSelectTopic={(topic, mode, selectedLearnSettings, selectedTestSettings) => {
+      onSelectTopic={(topic, mode, selectedLearnSettings, selectedTestSettings, selectedFlashcardSettings) => {
         if (mode === 'looksfam') {
           setActiveSession({
             topicId: topic.id,
@@ -173,11 +177,12 @@ function App() {
             topicName: topic.name,
             mode,
           })
-        } else if (mode === 'flashcards') {
+        } else if (mode === 'flashcards' || mode === 'formulas') {
           setActiveSession({
             topicId: topic.id,
             topicName: topic.name,
             mode,
+            flashcardSettings: selectedFlashcardSettings ?? DEFAULT_FLASHCARD_SETTINGS,
           })
         }
       }}

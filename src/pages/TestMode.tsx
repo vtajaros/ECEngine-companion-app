@@ -23,6 +23,7 @@ import { resolveImageSrc } from '../services/image.service'
 import { weightedSample, plainSample } from '../lib/sampling'
 import { App as CapacitorApp } from '@capacitor/app'
 import { TestNavRail } from '../components/TestNavRail'
+import { useSound } from '../hooks/useSound'
 
 export interface TestSettings {
   instantChecking: boolean
@@ -293,6 +294,7 @@ const TestQuestionCard = memo(function TestQuestionCard({
 
 // ─── Main TestMode Component ───────────────────────────────────────────────────
 export function TestMode({ cards, title, settings, onComplete, onExit }: TestModeProps) {
+  const { play } = useSound()
   const [testCards, setTestCards] = useState<Card[]>([])
   const [answers, setAnswers] = useState<Record<string, number>>({})
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set())
@@ -436,8 +438,15 @@ export function TestMode({ cards, title, settings, onComplete, onExit }: TestMod
       if (viewState !== 'test') return
       if (settings.instantChecking && answers[cardId] !== undefined) return
       setAnswers((prev) => ({ ...prev, [cardId]: choiceIndex }))
+      if (settings.instantChecking) {
+        const card = testCards.find((c) => c.id === cardId)
+        if (card) {
+          const mcq = card.data as MCQData
+          play(choiceIndex === mcq.answer ? 'correct' : 'wrong')
+        }
+      }
     },
-    [viewState, settings.instantChecking, answers]
+    [viewState, settings.instantChecking, answers, testCards, play]
   )
 
   // Bookmark toggle
@@ -493,6 +502,7 @@ export function TestMode({ cards, title, settings, onComplete, onExit }: TestMod
 
     setScore({ correct, total: testCards.length })
     setViewState('summary')
+    play('finish')
 
     onComplete?.({
       score: correct,
@@ -500,7 +510,7 @@ export function TestMode({ cards, title, settings, onComplete, onExit }: TestMod
       bookmarked: bookmarkedIds.size,
       correctIds,
     })
-  }, [testCards, answers, bookmarkedIds.size, onComplete])
+  }, [testCards, answers, bookmarkedIds.size, onComplete, play])
 
   // Get context for LLM
   const handleGetContext = useCallback((mcq: MCQData) => {

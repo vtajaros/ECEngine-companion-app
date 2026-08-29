@@ -28,6 +28,7 @@ interface FlashcardSessionProps {
   onExit: () => void
   onOpenSettings?: () => void
   initialSettings?: FlashcardSettings
+  cardType?: 'flashcard' | 'formula'
 }
 
 /**
@@ -48,6 +49,7 @@ export function FlashcardSession({
   onExit,
   onOpenSettings,
   initialSettings,
+  cardType = 'flashcard',
 }: FlashcardSessionProps) {
   const { speak, stop } = useTTS()
   const [rawCards, setRawCards] = useState<Card[]>([])
@@ -103,8 +105,8 @@ export function FlashcardSession({
     ])
       .then(([allCards, savedBookmarks]) => {
         if (isCancelled) return
-        const flashcards = allCards.filter((c) => c.type === 'flashcard')
-        setRawCards(flashcards)
+        const targetCards = allCards.filter((c) => c.type === cardType)
+        setRawCards(targetCards)
         setBookmarkedIds(savedBookmarks)
         setCurrentIndex(0)
         setIsFlipped(false)
@@ -113,7 +115,7 @@ export function FlashcardSession({
       })
       .catch((err) => {
         if (isCancelled) return
-        console.error('[FlashcardSession] Failed to fetch flashcards:', err)
+        console.error(`[FlashcardSession] Failed to fetch ${cardType} cards:`, err)
         setError(err instanceof Error ? err.message : String(err))
       })
       .finally(() => {
@@ -124,7 +126,7 @@ export function FlashcardSession({
       isCancelled = true
       stop()
     }
-  }, [topicId, stop])
+  }, [topicId, cardType, stop])
 
   // Process cards queue according to active settings (Shuffle & Bookmarked Only)
   const activeCards = useMemo(() => {
@@ -183,26 +185,13 @@ export function FlashcardSession({
     setIsCompleted(false)
   }
 
-  // TTS: speak front text when a new card is presented (unflipped)
+  // TTS: speak front text when a new card is presented (unflipped) — skip for formulas
   useEffect(() => {
-    if (settings.ttsEnabled && currentCard && !isFlipped && !isCompleted) {
+    if (cardType !== 'formula' && settings.ttsEnabled && currentCard && !isFlipped && !isCompleted) {
       const textToSpeak = getFrontText(currentCard, settings.swapTermDef)
       speak(textToSpeak)
     }
-  }, [currentCard, isFlipped, isCompleted, settings.ttsEnabled, settings.swapTermDef, speak])
-
-  // Auto-advance timer: advances when card is flipped to back
-  useEffect(() => {
-    if (!settings.autoAdvance || !isFlipped || isCompleted) return
-
-    const delayMs = (settings.autoAdvanceDelay || 3) * 1000
-    const timer = setTimeout(() => {
-      handleNext()
-    }, delayMs)
-
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.autoAdvance, settings.autoAdvanceDelay, isFlipped, currentIndex, isCompleted, activeCards.length])
+  }, [currentCard, isFlipped, isCompleted, settings.ttsEnabled, settings.swapTermDef, cardType, speak])
 
   const handleGetContext = () => {
     if (!currentCard) return
@@ -270,7 +259,7 @@ Provide a thorough explanation covering ALL of the following:
             </button>
             <div className="min-w-0">
               <h1 className="text-sm font-semibold tracking-tight text-neutral-100 uppercase truncate">
-                {topicName || 'Flashcards'}
+                {topicName || (cardType === 'formula' ? 'Formulas' : 'Flashcards')}
               </h1>
               <p className="text-[11px] text-neutral-400">
                 {!isLoading && activeCards.length > 0 && !isCompleted && (
@@ -329,7 +318,7 @@ Provide a thorough explanation covering ALL of the following:
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <RefreshCw className="h-8 w-8 animate-spin text-[#00ff41] mb-3" />
               <p className="text-sm font-medium text-neutral-400">
-                Loading flashcards...
+                Loading {cardType === 'formula' ? 'formulas' : 'flashcards'}...
               </p>
             </div>
           )}
@@ -341,7 +330,7 @@ Provide a thorough explanation covering ALL of the following:
                 <AlertCircle size={24} />
               </div>
               <h2 className="text-lg font-semibold text-neutral-200">
-                Failed to Load Flashcards
+                Failed to Load {cardType === 'formula' ? 'Formulas' : 'Flashcards'}
               </h2>
               <p className="mt-1 max-w-sm text-xs text-neutral-400 leading-relaxed">
                 {error}
@@ -361,8 +350,8 @@ Provide a thorough explanation covering ALL of the following:
             <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-900/60 p-8 text-center my-8">
               <p className="text-sm text-neutral-400">
                 {settings.bookmarkedOnly
-                  ? 'No bookmarked flashcards found in this topic.'
-                  : 'No flashcards found in this topic.'}
+                  ? `No bookmarked ${cardType === 'formula' ? 'formulas' : 'flashcards'} found in this topic.`
+                  : `No ${cardType === 'formula' ? 'formulas' : 'flashcards'} found in this topic.`}
               </p>
               {settings.bookmarkedOnly ? (
                 <button
@@ -370,7 +359,7 @@ Provide a thorough explanation covering ALL of the following:
                   onClick={() => setSettings((s) => ({ ...s, bookmarkedOnly: false }))}
                   className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#00ff41]/10 border border-[#00ff41]/30 px-4 py-2 text-xs font-semibold text-[#00ff41] active:scale-95 transition-all"
                 >
-                  Show All Flashcards
+                  Show All {cardType === 'formula' ? 'Formulas' : 'Flashcards'}
                 </button>
               ) : (
                 <button
@@ -476,7 +465,7 @@ Provide a thorough explanation covering ALL of the following:
                       onClick={handleFlip}
                       className="flex-1 rounded-xl bg-neutral-900 border border-neutral-700 hover:border-[#00ff41] hover:text-[#00ff41] py-3 text-xs font-bold uppercase tracking-wider text-neutral-200 active:scale-95 transition-all shadow-sm whitespace-nowrap min-h-[52px]"
                     >
-                      Reveal {settings.swapTermDef ? 'Term' : 'Definition'}
+                      Reveal {currentCard?.type === 'formula' ? (settings.swapTermDef ? 'Name' : 'Formula') : (settings.swapTermDef ? 'Term' : 'Definition')}
                     </button>
 
                     <button
@@ -505,7 +494,7 @@ Provide a thorough explanation covering ALL of the following:
                 </h2>
                 <div className="mt-2.5 inline-block bg-neutral-950 border border-neutral-800 px-4 py-1.5 rounded-lg">
                   <span className="text-sm font-mono font-bold text-[#00ff41]">
-                    {activeCards.length} flashcards reviewed
+                    {activeCards.length} {cardType === 'formula' ? 'formulas' : 'flashcards'} reviewed
                   </span>
                 </div>
               </div>
@@ -558,7 +547,7 @@ Provide a thorough explanation covering ALL of the following:
         onCancel={() => setShowExitConfirm(false)}
       />
 
-      {/* Flashcard Settings Modal */}
+      {/* Flashcard / Formula Settings Modal */}
       <FlashcardSettingsModal
         isOpen={showSettingsModal}
         cardCount={rawCards.length}
@@ -566,6 +555,7 @@ Provide a thorough explanation covering ALL of the following:
         onSettingsChange={setSettings}
         onStart={() => setShowSettingsModal(false)}
         onClose={() => setShowSettingsModal(false)}
+        cardType={cardType}
       />
     </div>
   )

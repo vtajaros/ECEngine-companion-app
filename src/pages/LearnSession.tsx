@@ -10,6 +10,7 @@ import { buildLearnQueue } from '../lib/learnPipeline'
 import type { LearnPipelineSettings } from '../lib/learnPipeline'
 import { reshuffleCardChoices } from '../lib/scrambler'
 import { useTTS } from '../hooks/useTTS'
+import { useSound } from '../hooks/useSound'
 import { App as CapacitorApp } from '@capacitor/app'
 import { LeaveConfirmModal } from '../components/LeaveConfirmModal'
 
@@ -44,6 +45,7 @@ export function partitionCards(cards: Card[], partitionSize = 5, minTrailingSize
 
 export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learnSettings, ttsEnabled }: LearnSessionProps) {
   const { speak, stop } = useTTS()
+  const { play } = useSound()
   const [cards, setCards] = useState<Card[]>([])
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set())
   const [partitions, setPartitions] = useState<Card[][]>([])
@@ -264,6 +266,7 @@ Please explain:
     setSelectedChoiceIndex(isIdk ? null : choiceIdx)
     setIsAnswered(true)
     setViewState('feedback')
+    play(isCorrect ? 'correct' : 'wrong')
 
     // Track first-try flawless stat and IDK status once per card
     setCardStats((prev) => {
@@ -315,8 +318,10 @@ Please explain:
         setLightboxSrc(null)
         if (currentPartitionIndex === partitions.length - 1) {
           setViewState('set-complete')
+          play('finish')
         } else {
           setViewState('round-complete')
+          play('roundComplete')
         }
       } else {
         // Recycle missed cards for another pass (reshuffle choices if shuffleChoices is on)

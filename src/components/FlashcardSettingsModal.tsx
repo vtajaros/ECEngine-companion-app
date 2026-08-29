@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { X, Shuffle, ArrowLeftRight, BookmarkCheck, PlayCircle, Volume2 } from 'lucide-react'
+import { X, Shuffle, ArrowLeftRight, BookmarkCheck, Volume2 } from 'lucide-react'
 import { Preferences } from '@capacitor/preferences'
 
 const TTS_ENABLED_KEY = 'ecengine:tts:enabled'
@@ -8,8 +8,6 @@ export interface FlashcardSettings {
   shuffleCards: boolean
   swapTermDef: boolean
   bookmarkedOnly: boolean
-  autoAdvance: boolean
-  autoAdvanceDelay: number
   ttsEnabled: boolean
 }
 
@@ -17,12 +15,8 @@ export const DEFAULT_FLASHCARD_SETTINGS: FlashcardSettings = {
   shuffleCards: false,
   swapTermDef: false,
   bookmarkedOnly: false,
-  autoAdvance: false,
-  autoAdvanceDelay: 3,
   ttsEnabled: false,
 }
-
-const AUTO_ADVANCE_DELAYS = [1.5, 2, 3, 5, 10]
 
 interface FlashcardSettingsModalProps {
   isOpen: boolean
@@ -31,6 +25,7 @@ interface FlashcardSettingsModalProps {
   onSettingsChange: (s: FlashcardSettings) => void
   onStart: () => void
   onClose: () => void
+  cardType?: 'flashcard' | 'formula'
 }
 
 function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -62,10 +57,11 @@ export function FlashcardSettingsModal({
   onSettingsChange,
   onStart,
   onClose,
+  cardType = 'flashcard',
 }: FlashcardSettingsModalProps) {
-  // Load persisted TTS preference on modal open
+  // Load persisted TTS preference on modal open (only for standard flashcards)
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen || cardType === 'formula') return
     Preferences.get({ key: TTS_ENABLED_KEY }).then(({ value }) => {
       const persisted = value === 'true'
       if (persisted !== settings.ttsEnabled) {
@@ -73,7 +69,7 @@ export function FlashcardSettingsModal({
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen])
+  }, [isOpen, cardType])
 
   if (!isOpen) return null
 
@@ -99,10 +95,10 @@ export function FlashcardSettingsModal({
           <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-4 shrink-0">
             <div>
               <h2 className="text-base font-semibold text-neutral-100 tracking-tight">
-                Flashcard Settings
+                {cardType === 'formula' ? 'Formula Settings' : 'Flashcard Settings'}
               </h2>
               <p className="text-[11px] text-neutral-400 mt-0.5 font-mono">
-                {cardCount} flashcards available
+                {cardCount} {cardType === 'formula' ? 'formulas' : 'flashcards'} available
               </p>
             </div>
             <button
@@ -123,9 +119,11 @@ export function FlashcardSettingsModal({
                   <Shuffle size={14} />
                 </div>
                 <div>
-                  <span className="text-sm font-medium text-neutral-200">Shuffle Cards</span>
+                  <span className="text-sm font-medium text-neutral-200">
+                    {cardType === 'formula' ? 'Shuffle Formulas' : 'Shuffle Cards'}
+                  </span>
                   <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Randomizes flashcard order
+                    {cardType === 'formula' ? 'Randomizes formula study order' : 'Randomizes flashcard order'}
                   </p>
                 </div>
               </div>
@@ -142,9 +140,11 @@ export function FlashcardSettingsModal({
                   <ArrowLeftRight size={14} />
                 </div>
                 <div>
-                  <span className="text-sm font-medium text-neutral-200">Swap Term & Definition</span>
+                  <span className="text-sm font-medium text-neutral-200">
+                    {cardType === 'formula' ? 'Swap Name & Formula' : 'Swap Term & Definition'}
+                  </span>
                   <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Show definition on the front face first
+                    {cardType === 'formula' ? 'Show formula on the front face first' : 'Show definition on the front face first'}
                   </p>
                 </div>
               </div>
@@ -168,73 +168,30 @@ export function FlashcardSettingsModal({
               />
             </div>
 
-            {/* Auto-Advance Cards */}
-            <div className="flex flex-col gap-2 py-3.5">
-              <div className="flex items-center justify-between">
+            {/* Read Terms Aloud (TTS) — hidden for formulas */}
+            {cardType !== 'formula' && (
+              <div className="flex items-center justify-between py-3.5">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-neutral-800 text-neutral-400">
-                    <PlayCircle size={14} />
+                  <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+                    settings.ttsEnabled
+                      ? 'bg-[#00ff41]/10 border-[#00ff41]/30 text-[#00ff41]'
+                      : 'bg-neutral-800 border-transparent text-neutral-400'
+                  }`}>
+                    <Volume2 size={14} />
                   </div>
                   <div>
-                    <span className="text-sm font-medium text-neutral-200">Auto-Advance Cards</span>
-                    <p className="text-[11px] text-neutral-500 mt-0.5">
-                      Automatically moves to next card after delay
+                    <span className="text-sm font-medium text-neutral-200">Read Aloud</span>
+                    <p className="text-[11px] text-neutral-500 mt-0.5 max-w-[220px]">
+                      Reads the front of each flashcard using Android's native voice.
                     </p>
                   </div>
                 </div>
                 <ToggleSwitch
-                  checked={settings.autoAdvance}
-                  onChange={(v) => set({ autoAdvance: v })}
+                  checked={settings.ttsEnabled}
+                  onChange={handleTtsChange}
                 />
               </div>
-
-              {settings.autoAdvance && (
-                <div className="mt-2 pl-9">
-                  <span className="text-[11px] font-mono text-neutral-400 uppercase tracking-wider block mb-1.5">
-                    Advance Delay:
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {AUTO_ADVANCE_DELAYS.map((delay) => (
-                      <button
-                        key={delay}
-                        type="button"
-                        onClick={() => set({ autoAdvanceDelay: delay })}
-                        className={`rounded-lg px-3 py-1 text-xs font-mono font-semibold border transition-all active:scale-95 ${
-                          settings.autoAdvanceDelay === delay
-                            ? 'bg-[#00ff41] text-neutral-950 border-[#00ff41] shadow-[0_0_10px_rgba(0,255,65,0.25)]'
-                            : 'bg-neutral-900 text-neutral-300 border-neutral-700 hover:border-neutral-500'
-                        }`}
-                      >
-                        {delay}s
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Read Terms Aloud (TTS) */}
-            <div className="flex items-center justify-between py-3.5">
-              <div className="flex items-center gap-2.5">
-                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors ${
-                  settings.ttsEnabled
-                    ? 'bg-[#00ff41]/10 border-[#00ff41]/30 text-[#00ff41]'
-                    : 'bg-neutral-800 border-transparent text-neutral-400'
-                }`}>
-                  <Volume2 size={14} />
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-neutral-200">Read Aloud</span>
-                  <p className="text-[11px] text-neutral-500 mt-0.5 max-w-[220px]">
-                    Reads the front of each flashcard using Android's native voice.
-                  </p>
-                </div>
-              </div>
-              <ToggleSwitch
-                checked={settings.ttsEnabled}
-                onChange={handleTtsChange}
-              />
-            </div>
+            )}
           </div>
 
           {/* Footer */}

@@ -17,7 +17,9 @@ import { importDatabaseFile, UserCancelledError } from '../services/import.servi
 import { getSubjectBadgeClasses, getSubjectFilterClasses, SUBJECT_MAP } from '../lib/subjectColors'
 import { LearnSettingsModal, LearnSettings, DEFAULT_LEARN_SETTINGS } from '../components/LearnSettingsModal'
 import { TestSettingsModal, DEFAULT_TEST_SETTINGS } from '../components/TestSettingsModal'
+import { FlashcardSettingsModal, FlashcardSettings, DEFAULT_FLASHCARD_SETTINGS } from '../components/FlashcardSettingsModal'
 import type { TestSettings } from '../pages/TestMode'
+import appIcon from '../assets/images/ecengine-icon.png'
 
 export type BrowserMode = 'looksfam' | 'test' | 'testpaper' | 'flashcards' | 'formulas'
 export type DeckType = 'mcq' | 'flashcard' | 'formula' | 'mixed' | null
@@ -80,7 +82,8 @@ export interface TopicBrowserProps {
     topic: TopicWithCardCount,
     mode: BrowserMode,
     learnSettings?: LearnSettings,
-    testSettings?: TestSettings
+    testSettings?: TestSettings,
+    flashcardSettings?: FlashcardSettings
   ) => void
   onOpenSettings?: () => void
 }
@@ -125,6 +128,10 @@ export function TopicBrowser({
   // Test Settings Modal state
   const [testModalTopic, setTestModalTopic] = useState<TopicWithCardCount | null>(null)
   const [testSettings, setTestSettings] = useState<TestSettings>({ ...DEFAULT_TEST_SETTINGS })
+
+  // Flashcard Settings Modal state
+  const [flashcardModalTopic, setFlashcardModalTopic] = useState<TopicWithCardCount | null>(null)
+  const [flashcardSettings, setFlashcardSettings] = useState<FlashcardSettings>({ ...DEFAULT_FLASHCARD_SETTINGS })
 
   // Fetch topics on mount
   const fetchTopics = async () => {
@@ -280,15 +287,27 @@ export function TopicBrowser({
     onSelectTopic(topic, 'test', undefined, settings)
   }
 
+  const handleFlashcardStart = () => {
+    if (!flashcardModalTopic || !onSelectTopic) return
+    const topic = flashcardModalTopic
+    const settings = flashcardSettings
+    const targetMode = mode === 'formulas' ? 'formulas' : 'flashcards'
+    setFlashcardModalTopic(null)
+    onScrollPositionChange?.(getScrollPos())
+    onSelectTopic(topic, targetMode, undefined, undefined, settings)
+  }
+
   return (
     <div ref={browserContainerRef} className="h-full flex flex-col bg-neutral-950 text-neutral-50 overflow-y-auto">
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-md px-4 py-3 sm:px-6">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/20">
-              <Layers size={18} />
-            </div>
+            <img
+              src={appIcon}
+              alt="ECEngine logo"
+              className="h-8 w-8 object-contain shrink-0"
+            />
             <div>
               <h1 className="text-base font-semibold tracking-tight text-neutral-100 sm:text-lg">
                 ECEngine Companion
@@ -586,19 +605,30 @@ export function TopicBrowser({
                       </div>
                     )}
 
-                    {/* Bottom Row: Action Buttons — only shown in flashcards mode */}
-                    {mode === 'flashcards' && (
+                    {/* Bottom Row: Action Buttons — shown in flashcards and formulas modes */}
+                    {(mode === 'flashcards' || mode === 'formulas') && (
                       <div className="mt-3.5 flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-800/60">
                         <button
                           type="button"
                           onClick={() => {
-                            onScrollPositionChange?.(getScrollPos())
-                            onSelectTopic?.(topic, 'flashcards')
+                            setFlashcardSettings({ ...DEFAULT_FLASHCARD_SETTINGS })
+                            setFlashcardModalTopic(topic)
                           }}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-4 py-1.5 sm:px-5 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
                         >
                           <Play size={13} className="fill-current" />
-                          Study
+                          Learn
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onScrollPositionChange?.(getScrollPos())
+                            onSelectTopic?.(topic, 'testpaper')
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                        >
+                          <FileText size={13} />
+                          VIEW
                         </button>
                       </div>
                     )}
@@ -680,6 +710,17 @@ export function TopicBrowser({
         onSettingsChange={setTestSettings}
         onStart={handleTestStart}
         onClose={() => setTestModalTopic(null)}
+      />
+
+      {/* Flashcard Settings Modal */}
+      <FlashcardSettingsModal
+        isOpen={flashcardModalTopic !== null}
+        cardCount={flashcardModalTopic?.cardCount ?? 0}
+        settings={flashcardSettings}
+        onSettingsChange={setFlashcardSettings}
+        onStart={handleFlashcardStart}
+        onClose={() => setFlashcardModalTopic(null)}
+        cardType={mode === 'formulas' ? 'formula' : 'flashcard'}
       />
     </div>
   )
