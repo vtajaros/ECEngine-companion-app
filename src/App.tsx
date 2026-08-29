@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect } from 'react'
 import { TopicBrowser, BrowserMode } from './pages/TopicBrowser'
 import { LearnSession } from './pages/LearnSession'
 import { TestMode, TestSettings } from './pages/TestMode'
+import { TestPaperView } from './pages/TestPaperView'
+import { FlashcardSession } from './pages/FlashcardSession'
 import { Settings } from './pages/Settings'
 import { LearnSettings, DEFAULT_LEARN_SETTINGS } from './components/LearnSettingsModal'
 import { DEFAULT_TEST_SETTINGS } from './components/TestSettingsModal'
@@ -31,6 +33,12 @@ function App() {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [testCards, setTestCards] = useState<Card[]>([])
+
+  // Lifted browser state to survive session navigation
+  const [browserMode, setBrowserMode] = useState<BrowserMode>('looksfam')
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [selectedSubject, setSelectedSubject] = useState<string>('ALL')
+  const [scrollPosition, setScrollPosition] = useState<number>(0)
 
   // Load cards for test mode when a test session begins
   useEffect(() => {
@@ -112,8 +120,37 @@ function App() {
     )
   }
 
+  if (activeSession && activeSession.mode === 'testpaper') {
+    return (
+      <TestPaperView
+        topicId={activeSession.topicId}
+        title={activeSession.topicName}
+        onExit={() => setActiveSession(null)}
+      />
+    )
+  }
+
+  if (activeSession && activeSession.mode === 'flashcards') {
+    return (
+      <FlashcardSession
+        topicId={activeSession.topicId}
+        topicName={activeSession.topicName}
+        onExit={() => setActiveSession(null)}
+        onOpenSettings={() => setShowSettings(true)}
+      />
+    )
+  }
+
   return (
     <TopicBrowser
+      mode={browserMode}
+      onModeChange={setBrowserMode}
+      searchQuery={searchQuery}
+      onSearchQueryChange={setSearchQuery}
+      selectedSubject={selectedSubject}
+      onSelectedSubjectChange={setSelectedSubject}
+      scrollPosition={scrollPosition}
+      onScrollPositionChange={setScrollPosition}
       onOpenSettings={() => setShowSettings(true)}
       onSelectTopic={(topic, mode, selectedLearnSettings, selectedTestSettings) => {
         if (mode === 'looksfam') {
@@ -129,6 +166,18 @@ function App() {
             topicName: topic.name,
             mode,
             testSettings: selectedTestSettings ?? DEFAULT_TEST_SETTINGS,
+          })
+        } else if (mode === 'testpaper') {
+          setActiveSession({
+            topicId: topic.id,
+            topicName: topic.name,
+            mode,
+          })
+        } else if (mode === 'flashcards') {
+          setActiveSession({
+            topicId: topic.id,
+            topicName: topic.name,
+            mode,
           })
         }
       }}

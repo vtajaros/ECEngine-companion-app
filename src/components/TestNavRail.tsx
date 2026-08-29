@@ -51,7 +51,7 @@ export const TestNavRail = memo(function TestNavRail({
           Item Navigator
         </span>
         <div className="flex items-center gap-1.5 mt-0.5">
-          <span className="font-mono text-xs text-emerald-400 font-bold tabular-nums">
+          <span className="font-mono text-xs text-[#00ff41] font-bold tabular-nums">
             {answeredCount}
           </span>
           <span className="font-mono text-xs text-neutral-600">/</span>
@@ -64,7 +64,7 @@ export const TestNavRail = memo(function TestNavRail({
         </div>
         <div className="mt-2 w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
           <div
-            className="h-full rounded-full bg-emerald-500 transition-all duration-300 shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+            className="h-full rounded-full bg-[#00ff41] transition-all duration-300 shadow-[0_0_8px_rgba(0,255,65,0.3)]"
             style={{
               width: totalItems > 0 ? `${Math.round((answeredCount / totalItems) * 100)}%` : '0%',
             }}
@@ -89,15 +89,15 @@ export const TestNavRail = memo(function TestNavRail({
               title={`Question ${i + 1}${answered ? ' (Answered)' : ''}`}
               className={`text-xs select-none transition-all duration-150 flex items-center justify-between w-full py-2 px-2.5 rounded-lg font-medium text-left ${
                 isActive
-                  ? 'text-white font-bold bg-neutral-800/90 border-l-2 border-emerald-500 shadow-sm'
+                  ? 'text-white font-bold bg-neutral-800/90 border-l-2 border-[#00ff41] shadow-sm'
                   : answered
-                    ? 'text-emerald-400/90 hover:text-emerald-300 hover:bg-neutral-900/60'
+                    ? 'text-[#00ff41]/90 hover:text-[#00ff41] hover:bg-neutral-900/60'
                     : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/60'
               }`}
             >
               <span className="truncate">Q{i + 1}</span>
               {answered && (
-                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 ml-1" />
+                <Check className="w-3.5 h-3.5 text-[#00ff41] shrink-0 ml-1" />
               )}
             </button>
           )

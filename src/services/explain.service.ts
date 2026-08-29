@@ -113,3 +113,93 @@ STRICT FORMATTING RULES:
     throw new ExplainError('NETWORK_ERROR', undefined, message)
   }
 }
+
+export interface FlashcardExplainParams {
+  term: string
+  definition: string
+}
+
+export async function getFlashcardExplanation(params: FlashcardExplainParams): Promise<string> {
+  const { value: apiKey } = await Preferences.get({ key: 'groq_api_key' })
+  if (!apiKey || apiKey.trim() === '') {
+    throw new ExplainError('NO_KEY')
+  }
+
+  const { term, definition } = params
+
+  const userPrompt = `FLASHCARD:
+Term: ${term}
+Definition: ${definition}
+
+Please provide a concise, professional explanation of this Electronics Engineering concept for an ECE board exam student.
+
+STRICT FORMATTING RULES:
+1. STRUCTURE:
+   - **Explanation:** Always start with this header.
+     - Direct Concept Breakdown: The first sentence MUST clearly explain what this term/concept IS and its primary significance in Electronics Engineering.
+     - Technical Precision: Explain the core working mechanism, key characteristics, or practical engineering applications. No filler or generic fluff.
+   - **Key Formula or Example:** Include this section ONLY if a mathematical calculation, formula, or concrete circuit/system example clarifies the concept. If purely conceptual, skip entirely.
+   - **Memory Tip:** Always end with this header. Provide a Mnemonic, Mental Hook, or "Quick Fact" to help remember this concept on the PRC board exam.
+2. LATEX: Wrap ALL mathematical formulas, variables (like $V_{gs}$, $I_d$, or $\\mu$), and units in standard LaTeX delimiters ($ ... $).
+3. SEPARATION: Use exactly two newlines (\\n\\n) between sections.
+4. CONSTRAINTS: Max 150 words. Ensure formulas and variables render naturally in LaTeX.`
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 15000)
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-120b',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a professional ECE (Electronics and Communications Engineering) tutor helping Filipino students prepare for the PRC board exam. Be concise, accurate, and practical.',
+          },
+          {
+            role: 'user',
+            content: userPrompt,
+          },
+        ],
+      }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (response.status === 401) {
+      throw new ExplainError('INVALID_KEY')
+    }
+    if (response.status === 429) {
+      throw new ExplainError('RATE_LIMITED')
+    }
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '')
+      throw new ExplainError('API_ERROR', response.status, errorText)
+    }
+
+    const data = await response.json()
+    const content = data.choices?.[0]?.message?.content
+    if (!content || typeof content !== 'string' || content.trim() === '') {
+      throw new ExplainError('API_ERROR', 200, 'Empty response from model')
+    }
+
+    return content.trim()
+  } catch (err: unknown) {
+    clearTimeout(timeoutId)
+    if (err instanceof ExplainError) {
+      throw err
+    }
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new ExplainError('TIMEOUT')
+    }
+    const message = err instanceof Error ? err.message : String(err)
+    throw new ExplainError('NETWORK_ERROR', undefined, message)
+  }
+}

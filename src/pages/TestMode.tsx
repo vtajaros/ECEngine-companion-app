@@ -101,7 +101,7 @@ const TestQuestionCard = memo(function TestQuestionCard({
       className={`rounded-2xl border transition-all duration-200 scroll-mt-24 overflow-hidden shadow-lg ${
         showFeedback
           ? isCorrect
-            ? 'border-emerald-500/40 bg-emerald-500/[0.03]'
+            ? 'border-[#00ff41]/40 bg-[#00ff41]/[0.03]'
             : isAnswered
               ? 'border-red-500/40 bg-red-500/[0.03]'
               : 'border-neutral-800 bg-neutral-900/90'
@@ -114,14 +114,14 @@ const TestQuestionCard = memo(function TestQuestionCard({
       <div className="p-5 sm:p-6 border-b border-neutral-800/80 flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 mb-2">
-            <span className="font-mono text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+            <span className="font-mono text-xs font-bold text-[#00ff41] bg-[#00ff41]/10 px-2 py-0.5 rounded-md border border-[#00ff41]/20">
               Q{index + 1}
             </span>
             {showFeedback && (
               <span
                 className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
                   isCorrect
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    ? 'bg-[#00ff41]/20 text-[#00ff41] border border-[#00ff41]/30'
                     : isAnswered
                       ? 'bg-red-500/20 text-red-400 border border-red-500/30'
                       : 'bg-neutral-800 text-neutral-400'
@@ -154,7 +154,7 @@ const TestQuestionCard = memo(function TestQuestionCard({
           onClick={() => onToggleBookmark(card.id)}
           className={`p-2 rounded-xl border transition-all shrink-0 ${
             isBookmarked
-              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+              ? 'border-[#00ff41]/40 bg-[#00ff41]/10 text-[#00ff41]'
               : 'border-neutral-800 text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60'
           }`}
           title={isBookmarked ? 'Remove Bookmark' : 'Bookmark Question'}
@@ -179,9 +179,9 @@ const TestQuestionCard = memo(function TestQuestionCard({
           if (showFeedback) {
             const isChoiceCorrect = cIdx === mcq.answer
             if (isChoiceCorrect) {
-              stateStyles = 'border-emerald-500 bg-emerald-500/10 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
-              prefixStyles = 'text-emerald-400 font-bold'
-              iconElement = <Check className="w-4 h-4 text-emerald-400 font-bold" />
+              stateStyles = 'border-[#00ff41] bg-[#00ff41]/10 text-[#00ff41] shadow-[0_0_12px_rgba(0,255,65,0.15)]'
+              prefixStyles = 'text-[#00ff41] font-bold'
+              iconElement = <Check className="w-4 h-4 text-[#00ff41] font-bold" />
             } else if (isSelected && !isChoiceCorrect) {
               stateStyles = 'border-red-500 bg-red-500/10 text-red-300'
               prefixStyles = 'text-red-400 font-bold'
@@ -191,8 +191,8 @@ const TestQuestionCard = memo(function TestQuestionCard({
               prefixStyles = 'text-neutral-700'
             }
           } else if (isSelected) {
-            stateStyles = 'border-emerald-500 bg-emerald-500/10 text-emerald-300 font-medium'
-            prefixStyles = 'text-emerald-400 font-bold'
+            stateStyles = 'border-[#00ff41] bg-[#00ff41]/10 text-[#00ff41] font-medium'
+            prefixStyles = 'text-[#00ff41] font-bold'
           }
 
           const isLocked = viewState === 'review' || (settings.instantChecking && isAnswered)
@@ -266,8 +266,8 @@ const TestQuestionCard = memo(function TestQuestionCard({
             onClick={() => onToggleExplanation(index)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold uppercase tracking-wider transition-colors ${
               openExplanationId === index
-                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
+                ? 'border-[#00ff41] bg-[#00ff41]/10 text-[#00ff41]'
+                : 'border-[#00ff41]/30 text-[#00ff41] hover:bg-[#00ff41]/10'
             }`}
           >
             <Sparkles size={13} />
@@ -580,7 +580,7 @@ Please explain:
 
       <div className="flex items-center gap-3 shrink-0">
         <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-neutral-200 bg-neutral-900 px-3 py-1.5 rounded-xl border border-neutral-800">
-          <Clock className="w-3.5 h-3.5 text-emerald-400" />
+          <Clock className="w-3.5 h-3.5 text-[#00ff41]" />
           {formatTime(timeElapsed)}
         </div>
 
@@ -588,7 +588,7 @@ Please explain:
           <button
             type="button"
             onClick={() => setShowSubmitConfirm(true)}
-            className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold uppercase tracking-wider text-black hover:bg-emerald-400 transition-all shadow-[0_0_12px_rgba(16,185,129,0.25)] active:scale-95"
+            className="rounded-xl bg-[#00ff41] px-4 py-2 text-xs font-bold uppercase tracking-wider text-black hover:bg-[#00ff41]/90 transition-all shadow-[0_0_12px_rgba(0,255,65,0.25)] active:scale-95"
           >
             Submit
           </button>
@@ -624,7 +624,7 @@ Please explain:
             {/* Top Status Gradient Glow */}
             <div
               className={`absolute -top-12 left-1/2 -translate-x-1/2 w-64 h-32 blur-3xl opacity-20 pointer-events-none rounded-full ${
-                isPassed ? 'bg-emerald-500' : 'bg-red-500'
+                isPassed ? 'bg-[#00ff41]' : 'bg-red-500'
               }`}
             />
 
@@ -632,7 +632,7 @@ Please explain:
               <div
                 className={`mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border ${
                   isPassed
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
+                    ? 'border-[#00ff41]/30 bg-[#00ff41]/10 text-[#00ff41] shadow-[0_0_20px_rgba(0,255,65,0.2)]'
                     : 'border-red-500/30 bg-red-500/10 text-red-400 shadow-[0_0_20px_rgba(239,68,68,0.2)]'
                 }`}
               >
@@ -643,14 +643,14 @@ Please explain:
                 Test Completed
               </h2>
               {title && (
-                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#00ff41] mb-2">
                   {title}
                 </p>
               )}
               <span
                 className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border mb-6 ${
                   isPassed
-                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    ? 'bg-[#00ff41]/10 border-[#00ff41]/30 text-[#00ff41]'
                     : 'bg-red-500/10 border-red-500/30 text-red-400'
                 }`}
               >
@@ -663,7 +663,7 @@ Please explain:
                   <span className="text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Score</span>
                   <span
                     className={`font-mono text-2xl sm:text-3xl font-bold ${
-                      isPassed ? 'text-emerald-400' : 'text-red-400'
+                      isPassed ? 'text-[#00ff41]' : 'text-red-400'
                     }`}
                   >
                     {percentage}%
@@ -708,7 +708,7 @@ Please explain:
                 <button
                   type="button"
                   onClick={() => setViewState('review')}
-                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold uppercase tracking-wider text-xs transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.25)] active:scale-95"
+                  className="flex-1 py-3 px-4 rounded-xl bg-[#00ff41] hover:bg-[#00ff41]/90 text-black font-bold uppercase tracking-wider text-xs transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,255,65,0.25)] active:scale-95"
                 >
                   <ArrowRight className="w-4 h-4" />
                   Review Answers
@@ -730,7 +730,7 @@ Please explain:
       {testCards.length > 0 && (
         <div className="sm:hidden sticky top-0 z-30 flex items-center gap-2 border-b border-neutral-800 bg-neutral-950/95 px-3 py-2 backdrop-blur-md overflow-x-auto no-scrollbar shrink-0">
           <div className="flex items-center gap-1 shrink-0 pr-2 border-r border-neutral-800 font-mono text-[11px]">
-            <span className="text-emerald-400 font-bold tabular-nums">{answeredCount}</span>
+            <span className="text-[#00ff41] font-bold tabular-nums">{answeredCount}</span>
             <span className="text-neutral-600">/</span>
             <span className="text-neutral-400 tabular-nums">{testCards.length}</span>
           </div>
@@ -746,14 +746,14 @@ Please explain:
                   onClick={() => scrollToQuestion(i)}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all shrink-0 ${
                     isActive
-                      ? 'bg-emerald-500 text-black shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                      ? 'bg-[#00ff41] text-black shadow-[0_0_10px_rgba(0,255,65,0.3)]'
                       : answered
-                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                        ? 'bg-[#00ff41]/10 border border-[#00ff41]/30 text-[#00ff41]'
                         : 'bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-neutral-200'
                   }`}
                 >
                   <span>Q{i + 1}</span>
-                  {answered && !isActive && <Check className="w-3 h-3 text-emerald-400 shrink-0" />}
+                  {answered && !isActive && <Check className="w-3 h-3 text-[#00ff41] shrink-0" />}
                 </button>
               )
             })}
@@ -824,7 +824,7 @@ Please explain:
               className="relative w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-950 p-6 text-center shadow-2xl animate-in fade-in zoom-in-95 duration-200"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#00ff41]/10 border border-[#00ff41]/20 text-[#00ff41]">
                 <AlertTriangle size={24} />
               </div>
 
@@ -850,7 +850,7 @@ Please explain:
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  className="w-full rounded-xl bg-emerald-500 py-3 text-xs font-bold uppercase tracking-wider text-black hover:bg-emerald-400 transition-all shadow-[0_0_15px_rgba(16,185,129,0.25)] active:scale-95"
+                  className="w-full rounded-xl bg-[#00ff41] py-3 text-xs font-bold uppercase tracking-wider text-black hover:bg-[#00ff41]/90 transition-all shadow-[0_0_15px_rgba(0,255,65,0.25)] active:scale-95"
                 >
                   Confirm Submit
                 </button>
@@ -869,7 +869,7 @@ Please explain:
 
       {/* Context Copied Toast */}
       {showContextToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-xl border border-emerald-500/30 bg-neutral-900/95 px-4 py-2.5 shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs font-semibold text-emerald-400 animate-in fade-in slide-in-from-bottom-2">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-xl border border-[#00ff41]/30 bg-neutral-900/95 px-4 py-2.5 shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs font-semibold text-[#00ff41] animate-in fade-in slide-in-from-bottom-2">
           <CheckCircle2 size={16} />
           <span>Context copied to clipboard</span>
         </div>

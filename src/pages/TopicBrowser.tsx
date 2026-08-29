@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Search,
   X,
@@ -10,6 +10,7 @@ import {
   Settings as SettingsIcon,
   Play,
   ClipboardList,
+  FileText,
 } from 'lucide-react'
 import { openDatabase, dbService, TopicWithCardCount, getPreviouslyImportedDbPath } from '../services/db.service'
 import { importDatabaseFile, UserCancelledError } from '../services/import.service'
@@ -18,7 +19,7 @@ import { LearnSettingsModal, LearnSettings, DEFAULT_LEARN_SETTINGS } from '../co
 import { TestSettingsModal, DEFAULT_TEST_SETTINGS } from '../components/TestSettingsModal'
 import type { TestSettings } from '../pages/TestMode'
 
-export type BrowserMode = 'looksfam' | 'test' | 'flashcards' | 'formulas'
+export type BrowserMode = 'looksfam' | 'test' | 'testpaper' | 'flashcards' | 'formulas'
 export type DeckType = 'mcq' | 'flashcard' | 'formula' | 'mixed' | null
 
 /**
@@ -67,6 +68,14 @@ function formatTypeChip(type: string): string {
 const SUBJECT_ORDER = ['MATH', 'ELECS', 'GEAS', 'EST']
 
 export interface TopicBrowserProps {
+  mode?: BrowserMode
+  onModeChange?: (mode: BrowserMode) => void
+  searchQuery?: string
+  onSearchQueryChange?: (query: string) => void
+  selectedSubject?: string
+  onSelectedSubjectChange?: (subject: string) => void
+  scrollPosition?: number
+  onScrollPositionChange?: (pos: number) => void
   onSelectTopic?: (
     topic: TopicWithCardCount,
     mode: BrowserMode,
@@ -76,15 +85,38 @@ export interface TopicBrowserProps {
   onOpenSettings?: () => void
 }
 
-export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProps = {}) {
-  const [mode, setMode] = useState<BrowserMode>('looksfam')
+export function TopicBrowser({
+  mode: controlledMode,
+  onModeChange,
+  searchQuery: controlledSearchQuery,
+  onSearchQueryChange,
+  selectedSubject: controlledSelectedSubject,
+  onSelectedSubjectChange,
+  scrollPosition,
+  onScrollPositionChange,
+  onSelectTopic,
+  onOpenSettings,
+}: TopicBrowserProps = {}) {
+  const [localMode, setLocalMode] = useState<BrowserMode>('looksfam')
   const [includeMcqInFlashcards, setIncludeMcqInFlashcards] = useState<boolean>(false)
   const [topics, setTopics] = useState<TopicWithCardCount[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [isImporting, setIsImporting] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState<string>('')
-  const [selectedSubject, setSelectedSubject] = useState<string>('ALL')
+  const [localSearchQuery, setLocalSearchQuery] = useState<string>('')
+  const [localSelectedSubject, setLocalSelectedSubject] = useState<string>('ALL')
+
+  const mode = controlledMode ?? localMode
+  const setMode = onModeChange ?? setLocalMode
+
+  const searchQuery = controlledSearchQuery ?? localSearchQuery
+  const setSearchQuery = onSearchQueryChange ?? setLocalSearchQuery
+
+  const selectedSubject = controlledSelectedSubject ?? localSelectedSubject
+  const setSelectedSubject = onSelectedSubjectChange ?? setLocalSelectedSubject
+
+  const browserContainerRef = useRef<HTMLDivElement>(null)
+  const getScrollPos = () => browserContainerRef.current?.scrollTop || 0
 
   // Learn Settings Modal state
   const [learnModalTopic, setLearnModalTopic] = useState<TopicWithCardCount | null>(null)
@@ -149,6 +181,17 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
     init()
   }, [])
 
+  // Restore scroll position after topics load (one-shot on return from session)
+  useEffect(() => {
+    if (!isLoading && scrollPosition && scrollPosition > 0) {
+      const target = scrollPosition
+      requestAnimationFrame(() => {
+        browserContainerRef.current?.scrollTo({ top: target, behavior: 'instant' as ScrollBehavior })
+      })
+      onScrollPositionChange?.(0)
+    }
+  }, [isLoading, scrollPosition, onScrollPositionChange])
+
   // Filter topics for current mode
   const topicsForMode = useMemo(() => {
     return topics.filter((t) => {
@@ -202,11 +245,10 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
 
   // Auto-reset subject filter if the selected subject does not exist in current mode
   useEffect(() => {
-    if (selectedSubject !== 'ALL' && !availableSubjects.includes(selectedSubject)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset subject filter when active subject is not in current mode
+    if (!isLoading && selectedSubject !== 'ALL' && !availableSubjects.includes(selectedSubject)) {
       setSelectedSubject('ALL')
     }
-  }, [availableSubjects, selectedSubject])
+  }, [isLoading, availableSubjects, selectedSubject, setSelectedSubject])
 
   // Filter topics by subject and search query
   const filteredTopics = useMemo(() => {
@@ -225,6 +267,7 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
     const topic = learnModalTopic
     const settings = learnSettings
     setLearnModalTopic(null)
+    onScrollPositionChange?.(getScrollPos())
     onSelectTopic(topic, 'looksfam', settings)
   }
 
@@ -233,11 +276,12 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
     const topic = testModalTopic
     const settings = testSettings
     setTestModalTopic(null)
+    onScrollPositionChange?.(getScrollPos())
     onSelectTopic(topic, 'test', undefined, settings)
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-neutral-950 text-neutral-50">
+    <div ref={browserContainerRef} className="h-full flex flex-col bg-neutral-950 text-neutral-50 overflow-y-auto">
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-md px-4 py-3 sm:px-6">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
@@ -452,84 +496,112 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
                     key={topic.id}
                     className="group relative flex flex-col justify-between rounded-xl border border-neutral-800 bg-neutral-900/80 p-4 transition-all duration-200 hover:border-neutral-700 hover:bg-neutral-900 shadow-sm"
                   >
-                    {/* Top Row: Subject Badge & Card Count */}
+                    {/* Top Section: Topic Name & Stats */}
                     <div>
-                      <div className="flex items-center justify-between gap-2">
+                      {/* Row 1: Topic Name (Left) + Subject Badge (Right) */}
+                      <div className="flex items-start justify-between gap-3">
+                        <h2 className="text-base font-semibold leading-snug tracking-tight text-neutral-100 uppercase group-hover:text-[#00ff41] transition-colors line-clamp-2 flex-1 min-w-0">
+                          {topic.name}
+                        </h2>
                         <span
-                          className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${badgeClasses}`}
+                          className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border shrink-0 ${badgeClasses}`}
                         >
                           {topic.subject || 'OTHER'}
                         </span>
-                        <span className="text-[11px] font-mono font-medium text-neutral-400 bg-neutral-950/60 px-2 py-0.5 rounded border border-neutral-800">
+                      </div>
+
+                      {/* Row 2: Type & Tag Chips (Left) + Card Count (Right) */}
+                      <div className="mt-1.5 flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                          {parsedTypes.map((type) => (
+                            <span
+                              key={type}
+                              className="rounded bg-neutral-950 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-neutral-300 border border-neutral-800"
+                            >
+                              {formatTypeChip(type)}
+                            </span>
+                          ))}
+
+                          {/* Render custom tags if available (capped at 2 for mobile compactness) */}
+                          {topic.tags &&
+                            topic.tags.slice(0, 2).map((tag) => (
+                              <span
+                                key={tag}
+                                className="rounded bg-neutral-950 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-neutral-300 border border-neutral-800"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                        </div>
+
+                        <span className="text-[11px] font-mono font-medium text-neutral-400 bg-neutral-950/60 px-2 py-0.5 rounded border border-neutral-800 shrink-0 ml-auto">
                           {topic.cardCount} {topic.cardCount === 1 ? 'item' : 'items'}
                         </span>
                       </div>
 
-                      {/* Topic Name */}
-                      <h2 className="mt-2.5 text-base font-semibold leading-snug tracking-tight text-neutral-100 uppercase group-hover:text-[#00ff41] transition-colors line-clamp-2">
-                        {topic.name}
-                      </h2>
-
                       {/* Description if present */}
                       {topic.description && topic.description.trim() !== '' && (
-                        <p className="mt-1 text-xs text-neutral-400 leading-relaxed line-clamp-2">
+                        <p className="mt-1.5 text-xs text-neutral-400 leading-relaxed line-clamp-2">
                           {topic.description}
                         </p>
                       )}
                     </div>
 
-                    {/* Bottom Row: Type Chips and Learn Button */}
-                    <div className="mt-3.5 flex flex-wrap items-center justify-between gap-1.5 pt-2.5 border-t border-neutral-800/60">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {parsedTypes.map((type) => (
-                          <span
-                            key={type}
-                            className="rounded bg-neutral-950/80 px-2 py-0.5 text-[10px] font-medium tracking-wide text-neutral-300 border border-neutral-800"
-                          >
-                            {formatTypeChip(type)}
-                          </span>
-                        ))}
-
-                        {/* Render custom tags if available (capped at 2 for mobile compactness) */}
-                        {topic.tags &&
-                          topic.tags.slice(0, 2).map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded bg-neutral-950/80 px-2 py-0.5 text-[10px] font-medium tracking-wide text-neutral-300 border border-neutral-800"
-                            >
-                              {tag}
-                            </span>
-                          ))}
+                    {/* Bottom Row: Action Buttons — only shown in looksfam mode */}
+                    {mode === 'looksfam' && (
+                      <div className="mt-3.5 flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-800/60">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLearnSettings({ ...DEFAULT_LEARN_SETTINGS })
+                            setLearnModalTopic(topic)
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                        >
+                          <Play size={13} className="fill-current" />
+                          Learn
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTestSettings({ ...DEFAULT_TEST_SETTINGS })
+                            setTestModalTopic(topic)
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                        >
+                          <ClipboardList size={13} />
+                          Test
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onScrollPositionChange?.(getScrollPos())
+                            onSelectTopic?.(topic, 'testpaper')
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                        >
+                          <FileText size={13} />
+                          VIEW
+                        </button>
                       </div>
+                    )}
 
-                      {/* Learn & Test buttons — only shown in looksfam mode */}
-                      {mode === 'looksfam' && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setLearnSettings({ ...DEFAULT_LEARN_SETTINGS })
-                              setLearnModalTopic(topic)
-                            }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#00ff41]/10 border border-[#00ff41]/25 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-[#00ff41] hover:bg-[#00ff41]/20 hover:border-[#00ff41]/50 active:scale-95 transition-all"
-                          >
-                            <Play size={13} className="fill-[#00ff41]" />
-                            Learn
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTestSettings({ ...DEFAULT_TEST_SETTINGS })
-                              setTestModalTopic(topic)
-                            }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-200 hover:bg-neutral-700 hover:text-white active:scale-95 transition-all"
-                          >
-                            <ClipboardList size={13} />
-                            Test
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    {/* Bottom Row: Action Buttons — only shown in flashcards mode */}
+                    {mode === 'flashcards' && (
+                      <div className="mt-3.5 flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-800/60">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onScrollPositionChange?.(getScrollPos())
+                            onSelectTopic?.(topic, 'flashcards')
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-4 py-1.5 sm:px-5 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                        >
+                          <Play size={13} className="fill-current" />
+                          Study
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )
               })}

@@ -137,7 +137,7 @@ export function Settings({ onClose }: SettingsProps) {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-neutral-950 text-neutral-50">
+    <div className="flex h-full flex-col bg-neutral-950 text-neutral-50 overflow-y-auto">
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-md px-4 py-3 sm:px-6">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
