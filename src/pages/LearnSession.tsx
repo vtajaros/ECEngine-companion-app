@@ -109,6 +109,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
   // Fetch topic cards on mount (cards + bookmarks fire in parallel)
   useEffect(() => {
     let isCancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset loading/error state for async card fetch
     setIsLoading(true)
     setError(null)
 
@@ -181,6 +182,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
       const timer = setTimeout(() => setShowSolution(true), 500)
       return () => clearTimeout(timer)
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset delayed solution visibility outside feedback mode
       setShowSolution(false)
     }
   }, [viewState, currentCard?.id, mcqData?.explanation, mcqData?.solutionImagePath])
@@ -195,6 +197,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
   // Resolve question & solution images lazily for the active card
   useEffect(() => {
     let isCancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Clear previous image URLs before async resolution
     setQuestionImageSrc(null)
     setSolutionImageSrc(null)
 

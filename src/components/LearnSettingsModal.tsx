@@ -78,6 +78,7 @@ export function LearnSettingsModal({
       }
     })
     // Reset custom state on each open
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset form state on modal open
     setIsCustomMode(typeof settings.itemCount === 'number' && ![20, 50, 100].includes(settings.itemCount as number))
     setCustomInput(typeof settings.itemCount === 'number' ? String(settings.itemCount) : '')
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -9,13 +9,16 @@ import {
   Sigma,
   Settings as SettingsIcon,
   Play,
-  } from 'lucide-react'
+  ClipboardList,
+} from 'lucide-react'
 import { openDatabase, dbService, TopicWithCardCount, getPreviouslyImportedDbPath } from '../services/db.service'
 import { importDatabaseFile, UserCancelledError } from '../services/import.service'
 import { getSubjectBadgeClasses, getSubjectFilterClasses, SUBJECT_MAP } from '../lib/subjectColors'
 import { LearnSettingsModal, LearnSettings, DEFAULT_LEARN_SETTINGS } from '../components/LearnSettingsModal'
+import { TestSettingsModal, DEFAULT_TEST_SETTINGS } from '../components/TestSettingsModal'
+import type { TestSettings } from '../pages/TestMode'
 
-export type BrowserMode = 'looksfam' | 'flashcards' | 'formulas'
+export type BrowserMode = 'looksfam' | 'test' | 'flashcards' | 'formulas'
 export type DeckType = 'mcq' | 'flashcard' | 'formula' | 'mixed' | null
 
 /**
@@ -64,7 +67,12 @@ function formatTypeChip(type: string): string {
 const SUBJECT_ORDER = ['MATH', 'ELECS', 'GEAS', 'EST']
 
 export interface TopicBrowserProps {
-  onSelectTopic?: (topic: TopicWithCardCount, mode: BrowserMode, learnSettings?: LearnSettings) => void
+  onSelectTopic?: (
+    topic: TopicWithCardCount,
+    mode: BrowserMode,
+    learnSettings?: LearnSettings,
+    testSettings?: TestSettings
+  ) => void
   onOpenSettings?: () => void
 }
 
@@ -81,6 +89,10 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
   // Learn Settings Modal state
   const [learnModalTopic, setLearnModalTopic] = useState<TopicWithCardCount | null>(null)
   const [learnSettings, setLearnSettings] = useState<LearnSettings>({ ...DEFAULT_LEARN_SETTINGS })
+
+  // Test Settings Modal state
+  const [testModalTopic, setTestModalTopic] = useState<TopicWithCardCount | null>(null)
+  const [testSettings, setTestSettings] = useState<TestSettings>({ ...DEFAULT_TEST_SETTINGS })
 
   // Fetch topics on mount
   const fetchTopics = async () => {
@@ -191,6 +203,7 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
   // Auto-reset subject filter if the selected subject does not exist in current mode
   useEffect(() => {
     if (selectedSubject !== 'ALL' && !availableSubjects.includes(selectedSubject)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset subject filter when active subject is not in current mode
       setSelectedSubject('ALL')
     }
   }, [availableSubjects, selectedSubject])
@@ -213,6 +226,14 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
     const settings = learnSettings
     setLearnModalTopic(null)
     onSelectTopic(topic, 'looksfam', settings)
+  }
+
+  const handleTestStart = () => {
+    if (!testModalTopic || !onSelectTopic) return
+    const topic = testModalTopic
+    const settings = testSettings
+    setTestModalTopic(null)
+    onSelectTopic(topic, 'test', undefined, settings)
   }
 
   return (
@@ -481,19 +502,32 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
                           ))}
                       </div>
 
-                      {/* Learn button — only shown in looksfam mode */}
+                      {/* Learn & Test buttons — only shown in looksfam mode */}
                       {mode === 'looksfam' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setLearnSettings({ ...DEFAULT_LEARN_SETTINGS })
-                            setLearnModalTopic(topic)
-                          }}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#00ff41]/10 border border-[#00ff41]/25 px-4 py-2 text-xs font-bold uppercase tracking-wider text-[#00ff41] hover:bg-[#00ff41]/20 hover:border-[#00ff41]/50 active:scale-95 transition-all"
-                        >
-                          <Play size={13} className="fill-[#00ff41]" />
-                          Learn
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLearnSettings({ ...DEFAULT_LEARN_SETTINGS })
+                              setLearnModalTopic(topic)
+                            }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#00ff41]/10 border border-[#00ff41]/25 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-[#00ff41] hover:bg-[#00ff41]/20 hover:border-[#00ff41]/50 active:scale-95 transition-all"
+                          >
+                            <Play size={13} className="fill-[#00ff41]" />
+                            Learn
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTestSettings({ ...DEFAULT_TEST_SETTINGS })
+                              setTestModalTopic(topic)
+                            }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-200 hover:bg-neutral-700 hover:text-white active:scale-95 transition-all"
+                          >
+                            <ClipboardList size={13} />
+                            Test
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -564,6 +598,16 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
         onSettingsChange={setLearnSettings}
         onStart={handleLearnStart}
         onClose={() => setLearnModalTopic(null)}
+      />
+
+      {/* Test Settings Modal */}
+      <TestSettingsModal
+        isOpen={testModalTopic !== null}
+        cardCount={testModalTopic?.cardCount ?? 0}
+        settings={testSettings}
+        onSettingsChange={setTestSettings}
+        onStart={handleTestStart}
+        onClose={() => setTestModalTopic(null)}
       />
     </div>
   )

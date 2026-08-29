@@ -27,6 +27,7 @@ export function ImageLightbox({ src, alt = 'Diagram', onClose }: ImageLightboxPr
   // Reset zoom and pan whenever src changes or lightbox opens
   useEffect(() => {
     if (src) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset zoom/pan when displaying a new image
       setScale(1)
       setTranslate({ x: 0, y: 0 })
       setShowHint(true)

@@ -26,6 +26,7 @@ export function ExplanationPanel({
 
   useEffect(() => {
     let isCancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset state for new async fetch
     setLoading(true)
     setExplanation(null)
     setErrorType(null)
@@ -144,7 +145,7 @@ export function ExplanationPanel({
                     const headerLines: string[] = []
                     const listLines: string[] = []
                     for (const line of lines) {
-                      if (/^\s*\d+[\.)]\s/.test(line.trim())) {
+                      if (/^\s*\d+[.)]\s/.test(line.trim())) {
                         listLines.push(line.trim())
                       } else {
                         headerLines.push(line.trim())

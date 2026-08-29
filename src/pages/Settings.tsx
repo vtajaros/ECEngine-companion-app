@@ -54,6 +54,7 @@ export function Settings({ onClose }: SettingsProps) {
       }
     })
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Asynchronously fetch image count on mount
     refreshImageCount()
   }, [])
 

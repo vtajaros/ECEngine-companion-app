@@ -1,15 +1,20 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { TopicBrowser, BrowserMode } from './pages/TopicBrowser'
 import { LearnSession } from './pages/LearnSession'
+import { TestMode, TestSettings } from './pages/TestMode'
 import { Settings } from './pages/Settings'
 import { LearnSettings, DEFAULT_LEARN_SETTINGS } from './components/LearnSettingsModal'
+import { DEFAULT_TEST_SETTINGS } from './components/TestSettingsModal'
 import type { LearnPipelineSettings } from './lib/learnPipeline'
+import { dbService } from './services/db.service'
+import { Card } from './types'
 
 interface ActiveSession {
   topicId: string
   topicName?: string
   mode: BrowserMode
-  learnSettings: LearnSettings
+  learnSettings?: LearnSettings
+  testSettings?: TestSettings
 }
 
 function toPipelineSettings(s: LearnSettings): LearnPipelineSettings {
@@ -25,16 +30,54 @@ function toPipelineSettings(s: LearnSettings): LearnPipelineSettings {
 function App() {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [testCards, setTestCards] = useState<Card[]>([])
 
+  // Load cards for test mode when a test session begins
+  useEffect(() => {
+    if (activeSession && activeSession.mode === 'test') {
+      dbService.getCardsWithProgress(activeSession.topicId).then(setTestCards).catch((err) => {
+        console.error('[App] Failed to load cards for test:', err)
+      })
+    } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset test cards when leaving test session
+      setTestCards([])
+    }
+  }, [activeSession])
+
+  // Memoized Learn Pipeline Settings: keyed on primitive fields to stabilize reference
+  const learnSettings = activeSession?.learnSettings
   const pipelineSettings = useMemo(() => {
-    if (!activeSession) return undefined
-    return toPipelineSettings(activeSession.learnSettings)
+    if (!learnSettings) return undefined
+    return toPipelineSettings(learnSettings)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    activeSession?.learnSettings.bookmarkedOnly,
-    activeSession?.learnSettings.shuffleQuestions,
-    activeSession?.learnSettings.shuffleChoices,
-    activeSession?.learnSettings.itemCount,
-    activeSession?.learnSettings.randomSample,
+    learnSettings?.bookmarkedOnly,
+    learnSettings?.shuffleQuestions,
+    learnSettings?.shuffleChoices,
+    learnSettings?.itemCount,
+    learnSettings?.randomSample,
+  ])
+
+  // Memoized Test Settings: keyed on primitive fields to prevent resetting in-progress test on parent re-renders
+  const testSettings = activeSession?.testSettings
+  const memoizedTestSettings: TestSettings | undefined = useMemo(() => {
+    if (!testSettings) return undefined
+    return {
+      itemCount: testSettings.itemCount,
+      instantChecking: testSettings.instantChecking,
+      shuffleQuestions: testSettings.shuffleQuestions,
+      shuffleChoices: testSettings.shuffleChoices,
+      bookmarkedOnly: testSettings.bookmarkedOnly,
+      randomSample: testSettings.randomSample,
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    testSettings?.itemCount,
+    testSettings?.instantChecking,
+    testSettings?.shuffleQuestions,
+    testSettings?.shuffleChoices,
+    testSettings?.bookmarkedOnly,
+    testSettings?.randomSample,
   ])
 
   if (showSettings) {
@@ -53,7 +96,18 @@ function App() {
         onExit={() => setActiveSession(null)}
         onOpenSettings={() => setShowSettings(true)}
         learnSettings={pipelineSettings}
-        ttsEnabled={activeSession.learnSettings.ttsEnabled}
+        ttsEnabled={activeSession.learnSettings?.ttsEnabled}
+      />
+    )
+  }
+
+  if (activeSession && activeSession.mode === 'test') {
+    return (
+      <TestMode
+        cards={testCards}
+        title={activeSession.topicName}
+        settings={memoizedTestSettings ?? DEFAULT_TEST_SETTINGS}
+        onExit={() => setActiveSession(null)}
       />
     )
   }
@@ -61,13 +115,20 @@ function App() {
   return (
     <TopicBrowser
       onOpenSettings={() => setShowSettings(true)}
-      onSelectTopic={(topic, mode, learnSettings) => {
+      onSelectTopic={(topic, mode, selectedLearnSettings, selectedTestSettings) => {
         if (mode === 'looksfam') {
           setActiveSession({
             topicId: topic.id,
             topicName: topic.name,
             mode,
-            learnSettings: learnSettings ?? DEFAULT_LEARN_SETTINGS,
+            learnSettings: selectedLearnSettings ?? DEFAULT_LEARN_SETTINGS,
+          })
+        } else if (mode === 'test') {
+          setActiveSession({
+            topicId: topic.id,
+            topicName: topic.name,
+            mode,
+            testSettings: selectedTestSettings ?? DEFAULT_TEST_SETTINGS,
           })
         }
       }}
