@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { TopicBrowser, BrowserMode } from './pages/TopicBrowser'
 import { LearnSession } from './pages/LearnSession'
 import { Settings } from './pages/Settings'
+import { TTSTest } from './pages/TTSTest'
 
 interface ActiveSession {
   topicId: string
@@ -12,9 +13,20 @@ interface ActiveSession {
 function App() {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [showTTSTest, setShowTTSTest] = useState(false)
+
+  // Temporary route for standalone TTS verification
+  if (showTTSTest) {
+    return <TTSTest onClose={() => setShowTTSTest(false)} />
+  }
 
   if (showSettings) {
-    return <Settings onClose={() => setShowSettings(false)} />
+    return (
+      <Settings
+        onClose={() => setShowSettings(false)}
+        onOpenTTSTest={() => setShowTTSTest(true)}
+      />
+    )
   }
 
   if (activeSession && activeSession.mode === 'looksfam') {

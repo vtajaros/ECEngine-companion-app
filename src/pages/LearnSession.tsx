@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, RefreshCw, CheckCircle2, AlertCircle, RotateCcw, Sparkles, Copy } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle2, AlertCircle, RotateCcw, Sparkles, Copy, Bookmark } from 'lucide-react'
 import { dbService } from '../services/db.service'
+import { bookmarkService } from '../services/bookmark.service'
 import { Card, MCQData } from '../types'
 import { ExplanationPanel } from '../components/ExplanationPanel'
 import { resolveImageSrc } from '../services/image.service'
@@ -35,6 +36,7 @@ export function partitionCards(cards: Card[], partitionSize = 5, minTrailingSize
 
 export function LearnSession({ topicId, topicName, onExit, onOpenSettings }: LearnSessionProps) {
   const [cards, setCards] = useState<Card[]>([])
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set())
   const [partitions, setPartitions] = useState<Card[][]>([])
   const [currentPartitionIndex, setCurrentPartitionIndex] = useState(0)
 
@@ -53,6 +55,10 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings }: Lea
   const [explanationOpen, setExplanationOpen] = useState(false)
   const [showContextToast, setShowContextToast] = useState(false)
 
+  // Solution reveal gating (500ms delay when solution content is available)
+  const [showSolution, setShowSolution] = useState(false)
+  const solutionRef = useRef<HTMLDivElement>(null)
+
   // Lazy image URI state for current active card
   const [questionImageSrc, setQuestionImageSrc] = useState<string | null>(null)
   const [solutionImageSrc, setSolutionImageSrc] = useState<string | null>(null)
@@ -66,29 +72,24 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings }: Lea
   // Answer state for current active card
   const [selectedChoiceIndex, setSelectedChoiceIndex] = useState<number | null>(null)
   const [isAnswered, setIsAnswered] = useState(false)
-  const [isNextEnabled, setIsNextEnabled] = useState(false)
   const [viewState, setViewState] = useState<'question' | 'feedback' | 'round-complete' | 'set-complete'>('question')
 
-  const nextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Clear pending timer on unmount
-  useEffect(() => {
-    return () => {
-      if (nextTimerRef.current) clearTimeout(nextTimerRef.current)
-    }
-  }, [])
-
-  // Fetch topic cards on mount
+  // Fetch topic cards on mount (cards + bookmarks fire in parallel)
   useEffect(() => {
     let isCancelled = false
     setIsLoading(true)
     setError(null)
 
-    dbService.getAllCardsByTopic(topicId)
-      .then((allCards) => {
+    // Fire both fetches concurrently — neither blocks the other
+    Promise.all([
+      dbService.getAllCardsByTopic(topicId),
+      bookmarkService.getAll(),
+    ])
+      .then(([allCards, savedBookmarks]) => {
         if (isCancelled) return
         const mcqCards = allCards.filter((c) => c.type === 'mcq')
         setCards(mcqCards)
+        setBookmarkedIds(savedBookmarks)
         const parts = partitionCards(mcqCards, 5, 3)
         setPartitions(parts)
         setCurrentPartitionIndex(0)
@@ -98,6 +99,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings }: Lea
         setCardStats({})
         setOpenExplanationRowId(null)
         setExplanationOpen(false)
+        setShowSolution(false)
         setLightboxSrc(null)
         setViewState('question')
       })
@@ -122,6 +124,31 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings }: Lea
     ? cards.findIndex((c) => c.id === currentCard.id) + 1
     : 0
   const isRetryPass = activeQueue.length < currentPartition.length
+  const isCurrentCardBookmarked = currentCard ? bookmarkedIds.has(currentCard.id) : false
+
+  const handleToggleBookmark = async () => {
+    if (!currentCard) return
+    const updated = await bookmarkService.toggle(currentCard.id)
+    setBookmarkedIds(updated)
+  }
+
+  // Solution delay: 0.5s delay before revealing solution in feedback mode
+  useEffect(() => {
+    const hasSolution = Boolean(mcqData?.explanation || mcqData?.solutionImagePath)
+    if (viewState === 'feedback' && hasSolution) {
+      const timer = setTimeout(() => setShowSolution(true), 500)
+      return () => clearTimeout(timer)
+    } else {
+      setShowSolution(false)
+    }
+  }, [viewState, currentCard?.id, mcqData?.explanation, mcqData?.solutionImagePath])
+
+  // Autoscroll to solution block when revealed
+  useEffect(() => {
+    if (showSolution && solutionRef.current) {
+      solutionRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [showSolution])
 
   // Resolve question & solution images lazily for the active card
   useEffect(() => {
@@ -187,7 +214,6 @@ Please explain:
 
     setSelectedChoiceIndex(choiceIndex)
     setIsAnswered(true)
-    setIsNextEnabled(false)
     setViewState('feedback')
 
     // Track first-try flawless stat once per card
@@ -213,23 +239,20 @@ Please explain:
       }
       return next
     })
-
-    // 500ms delay to enable Next button (matches desktop anti-accidental-skip behavior)
-    if (nextTimerRef.current) clearTimeout(nextTimerRef.current)
-    nextTimerRef.current = setTimeout(() => {
-      setIsNextEnabled(true)
-    }, 500)
   }
 
   const handleNext = () => {
-    if (!isNextEnabled && viewState === 'feedback') return
+    // Guard: if item has a solution, do not allow Next until solution is displayed
+    const hasSolution = Boolean(mcqData?.explanation || mcqData?.solutionImagePath)
+    if (viewState === 'feedback' && hasSolution && !showSolution) {
+      return
+    }
 
     if (currentCardIndex < activeQueue.length - 1) {
       // Advance to next question in activeQueue
       setCurrentCardIndex((prev) => prev + 1)
       setSelectedChoiceIndex(null)
       setIsAnswered(false)
-      setIsNextEnabled(false)
       setExplanationOpen(false)
       setLightboxSrc(null)
       setViewState('question')
@@ -253,7 +276,6 @@ Please explain:
         setPartitionWrongIds(new Set())
         setSelectedChoiceIndex(null)
         setIsAnswered(false)
-        setIsNextEnabled(false)
         setExplanationOpen(false)
         setLightboxSrc(null)
         setViewState('question')
@@ -273,7 +295,6 @@ Please explain:
       setLightboxSrc(null)
       setSelectedChoiceIndex(null)
       setIsAnswered(false)
-      setIsNextEnabled(false)
       setViewState('question')
     }
   }
@@ -289,7 +310,6 @@ Please explain:
     setLightboxSrc(null)
     setSelectedChoiceIndex(null)
     setIsAnswered(false)
-    setIsNextEnabled(false)
     setViewState('question')
   }
 
@@ -423,7 +443,19 @@ Please explain:
           {!isLoading && !error && (viewState === 'question' || viewState === 'feedback') && mcqData && (
             <div className="flex flex-col gap-5">
               {/* Question Card */}
-              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 p-5 sm:p-7 shadow-sm">
+              <div className="relative rounded-2xl border border-neutral-800 bg-neutral-900/80 p-5 sm:p-7 shadow-sm">
+                {/* Bookmark Toggle — visible in both question and feedback states */}
+                <button
+                  type="button"
+                  onClick={handleToggleBookmark}
+                  title={isCurrentCardBookmarked ? 'Remove bookmark' : 'Bookmark this question'}
+                  className="absolute top-4 right-4 p-1.5 rounded-lg text-neutral-500 hover:text-[#00ff41] active:scale-90 transition-all"
+                >
+                  <Bookmark
+                    size={18}
+                    className={isCurrentCardBookmarked ? 'fill-[#00ff41] text-[#00ff41]' : ''}
+                  />
+                </button>
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-mono font-semibold text-neutral-400 bg-neutral-950/60 px-2 py-0.5 rounded border border-neutral-800">
@@ -503,12 +535,15 @@ Please explain:
                 })}
               </div>
 
-              {/* Explanation Field (Feedback state) */}
-              {viewState === 'feedback' && ((mcqData.explanation && mcqData.explanation.trim() !== '') || solutionImageSrc) && (
-                <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-3">
+              {/* Solution Field (Feedback state, gated by showSolution) */}
+              {viewState === 'feedback' && showSolution && ((mcqData.explanation && mcqData.explanation.trim() !== '') || solutionImageSrc) && (
+                <div
+                  ref={solutionRef}
+                  className="rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-3"
+                >
                   <div className="text-[11px] font-bold uppercase tracking-wider text-[#00ff41] flex items-center gap-1.5">
                     <CheckCircle2 size={13} />
-                    <span>Explanation</span>
+                    <span>Solution</span>
                   </div>
                   {mcqData.explanation && mcqData.explanation.trim() !== '' && (
                     <p className="text-xs sm:text-sm text-neutral-300 leading-relaxed whitespace-pre-wrap">
@@ -534,18 +569,24 @@ Please explain:
               {/* Next Button + Context/Explain Buttons */}
               {viewState === 'feedback' && (
                 <div className="pt-2 flex flex-col gap-3">
-                  <button
-                    type="button"
-                    disabled={!isNextEnabled}
-                    onClick={handleNext}
-                    className={`w-full rounded-xl py-3.5 text-sm font-bold uppercase tracking-wider transition-all shadow-md active:scale-[0.98] ${
-                      isNextEnabled
-                        ? 'bg-[#00ff41] text-neutral-950 hover:bg-[#00ff41]/90 shadow-[0_0_15px_rgba(0,255,65,0.25)]'
-                        : 'bg-neutral-800 text-neutral-500 cursor-not-allowed opacity-50 shadow-none'
-                    }`}
-                  >
-                    Next Question
-                  </button>
+                  {(() => {
+                    const hasSolution = Boolean(mcqData?.explanation || mcqData?.solutionImagePath)
+                    const isNextDisabled = viewState === 'feedback' && hasSolution && !showSolution
+                    return (
+                      <button
+                        type="button"
+                        disabled={isNextDisabled}
+                        onClick={handleNext}
+                        className={`w-full rounded-xl py-3.5 text-sm font-bold uppercase tracking-wider transition-all shadow-md active:scale-[0.98] ${
+                          isNextDisabled
+                            ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed opacity-50 shadow-none'
+                            : 'bg-[#00ff41] text-neutral-950 hover:bg-[#00ff41]/90 shadow-[0_0_15px_rgba(0,255,65,0.25)]'
+                        }`}
+                      >
+                        Next Question
+                      </button>
+                    )
+                  })()}
 
                   {explanationOpen && (
                     <ExplanationPanel

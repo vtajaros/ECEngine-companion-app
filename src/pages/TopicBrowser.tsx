@@ -7,9 +7,9 @@ import {
   RefreshCw,
   GraduationCap,
   Sigma,
-  Settings as SettingsIcon,
-} from 'lucide-react'
-import { openDatabase, dbService, TopicWithCardCount } from '../services/db.service'
+  } from 'lucide-react'
+import { Settings as SettingsIcon } from 'lucide-react'
+import { openDatabase, dbService, TopicWithCardCount, getPreviouslyImportedDbPath } from '../services/db.service'
 import { importDatabaseFile, UserCancelledError } from '../services/import.service'
 import { getSubjectBadgeClasses, getSubjectFilterClasses, SUBJECT_MAP } from '../lib/subjectColors'
 
@@ -113,7 +113,20 @@ export function TopicBrowser({ onSelectTopic, onOpenSettings }: TopicBrowserProp
   }
 
   useEffect(() => {
-    fetchTopics()
+    const init = async () => {
+      const existingPath = await getPreviouslyImportedDbPath()
+      if (existingPath) {
+        try {
+          await openDatabase(existingPath)
+        } catch (err) {
+          console.warn('[TopicBrowser] Failed to auto-open previously imported DB:', err)
+          // Fall through — fetchTopics() will surface the "No Database
+          // Imported" state naturally if openDatabase failed
+        }
+      }
+      await fetchTopics()
+    }
+    init()
   }, [])
 
   // Filter topics for current mode

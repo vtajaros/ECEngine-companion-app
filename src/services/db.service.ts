@@ -1,4 +1,5 @@
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite'
+import { Filesystem, Directory } from '@capacitor/filesystem'
 import { z } from 'zod'
 import { Card, Topic } from '../types'
 
@@ -7,6 +8,29 @@ import { Card, Topic } from '../types'
 const sqlite = new SQLiteConnection(CapacitorSQLite)
 let db: SQLiteDBConnection | null = null
 let currentDbPath: string | null = null
+
+/** 
+ * Filename used when storing the database in the app's private Directory.Data.
+ * NOTE: This must match the DB_PRIVATE_FILENAME constant in import.service.ts.
+ */
+const DB_PRIVATE_FILENAME = 'ecengine.sqlite'
+
+/**
+ * Checks if a previously imported database exists in private storage and returns
+ * its absolute path if so, or null if it doesn't exist.
+ */
+export async function getPreviouslyImportedDbPath(): Promise<string | null> {
+  try {
+    const stat = await Filesystem.stat({ path: DB_PRIVATE_FILENAME, directory: Directory.Data })
+    if (!stat) return null
+    const uriResult = await Filesystem.getUri({ path: DB_PRIVATE_FILENAME, directory: Directory.Data })
+    const uri = uriResult.uri
+    return uri.startsWith('file://') ? uri.slice(7) : uri
+  } catch {
+    // Filesystem.stat throws if the file doesn't exist — treat as "no prior import"
+    return null
+  }
+}
 
 /**
  * Opens a SQLite database at the given file path or database name in read-only mode.
