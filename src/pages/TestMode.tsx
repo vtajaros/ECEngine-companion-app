@@ -80,8 +80,26 @@ const TestQuestionCard = memo(function TestQuestionCard({
   onOpenLightbox,
 }: TestQuestionCardProps) {
   const mcq = (card.data as MCQData) || null
+  const isValidMcq = mcq && typeof mcq !== 'string' && Array.isArray(mcq.choices) && mcq.choices.length === 4
 
-  if (!mcq || typeof mcq === 'string' || !Array.isArray(mcq.choices) || mcq.choices.length !== 4) {
+  const questionHtml = useMemo(
+    () => (isValidMcq ? renderMath(mcq.question) : ''),
+    [mcq, isValidMcq]
+  )
+
+  const choicesHtml = useMemo(() => {
+    if (!isValidMcq) return []
+    return mcq.choices.map((choice, cIdx) =>
+      (mcq.choicesPlainText?.[cIdx] ? renderPlainText : renderMath)(choice)
+    )
+  }, [mcq, isValidMcq])
+
+  const explanationHtml = useMemo(
+    () => (isValidMcq && mcq.explanation ? renderMath(mcq.explanation) : ''),
+    [mcq, isValidMcq]
+  )
+
+  if (!isValidMcq) {
     return (
       <div className="rounded-2xl p-6 border border-red-500/30 bg-red-500/5 text-red-400">
         <p className="font-bold uppercase tracking-wider text-xs mb-1">Card Load Error</p>
@@ -136,7 +154,7 @@ const TestQuestionCard = memo(function TestQuestionCard({
 
           <h3
             className="text-base sm:text-lg font-medium text-neutral-100 leading-relaxed break-words"
-            dangerouslySetInnerHTML={{ __html: renderMath(mcq.question) }}
+            dangerouslySetInnerHTML={{ __html: questionHtml }}
           />
 
           {questionImageSrc && (
@@ -144,6 +162,8 @@ const TestQuestionCard = memo(function TestQuestionCard({
               <img
                 src={questionImageSrc}
                 alt="Question diagram"
+                loading="lazy"
+                decoding="async"
                 className="max-h-64 max-w-full object-contain cursor-zoom-in rounded-lg"
                 onClick={() => onOpenLightbox(questionImageSrc)}
               />
@@ -215,7 +235,7 @@ const TestQuestionCard = memo(function TestQuestionCard({
               <span
                 className="flex-1 text-sm leading-normal break-words"
                 dangerouslySetInnerHTML={{
-                  __html: (mcq.choicesPlainText?.[cIdx] ? renderPlainText : renderMath)(choice),
+                  __html: choicesHtml[cIdx],
                 }}
               />
               {iconElement && <div className="ml-2 shrink-0">{iconElement}</div>}
@@ -234,7 +254,7 @@ const TestQuestionCard = memo(function TestQuestionCard({
             {mcq.explanation && (
               <p
                 className="text-xs sm:text-sm text-neutral-300 whitespace-pre-wrap leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: renderMath(mcq.explanation) }}
+                dangerouslySetInnerHTML={{ __html: explanationHtml }}
               />
             )}
             {solutionImageSrc && (
@@ -242,6 +262,8 @@ const TestQuestionCard = memo(function TestQuestionCard({
                 <img
                   src={solutionImageSrc}
                   alt="Solution diagram"
+                  loading="lazy"
+                  decoding="async"
                   className="max-h-60 max-w-full object-contain cursor-zoom-in rounded"
                   onClick={() => onOpenLightbox(solutionImageSrc)}
                 />

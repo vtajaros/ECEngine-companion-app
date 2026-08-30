@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Bookmark, ChevronDown, ChevronUp } from 'lucide-react'
 import { renderMath } from '../lib/latex'
@@ -20,6 +20,24 @@ function getCardDynamicFontSize(text: string): string {
   return 'text-base landscape:text-sm'
 }
 
+/**
+ * Splits a latex string that bundles multiple formulas into separate
+ * segments. Some formula cards author several related formulas into one
+ * `latex` field using "||" as a top-level separator (e.g. two cases of
+ * the same law) and/or ";" to append a short condition to a formula
+ * (e.g. "SWR = Z_L/Z_o ; (Z_L > Z_o)"). Rendering the whole string as one
+ * KaTeX block produces an unbroken line that overflows the card. Splitting
+ * here lets each formula/condition render on its own line instead.
+ * Exported so TestPaperView.tsx's FormulaItem can apply the same fix.
+ */
+export function splitBundledLatex(latex: string): string[] {
+  return latex
+    .split(/\s*\|\|\s*/)
+    .flatMap((segment) => segment.split(/(?<!\\)\s*;\s*/))
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
 function formatFormulaBack(f: FormulaData): string {
   let varsStrings: string[] = []
   if (f.variables && typeof f.variables === 'object') {
@@ -31,9 +49,15 @@ function formatFormulaBack(f: FormulaData): string {
   }
   const descVars = [f.description, varsStrings.join('\n')].filter(Boolean).join('\n\n')
 
+  const latexBlock = f.latex
+    ? splitBundledLatex(f.latex)
+        .map((segment) => `$$${segment}$$`)
+        .join('\n\n')
+    : ''
+
   return f.backIsPlainText
     ? [f.latex || '', descVars].filter(Boolean).join('\n\n')
-    : [f.latex ? `$$${f.latex}$$` : '', descVars].filter(Boolean).join('\n\n')
+    : [latexBlock, descVars].filter(Boolean).join('\n\n')
 }
 
 export function getFrontText(card: Card, swapTermDef: boolean): string {
@@ -78,6 +102,11 @@ function ExplanationBlock({
   const [internalOpen, setInternalOpen] = useState(false)
   const open = forceOpen || internalOpen
 
+  const explanationHtml = useMemo(
+    () => (explanationText ? renderMath(explanationText) : ''),
+    [explanationText]
+  )
+
   if (!explanationText && !explanationImageSrc) return null
 
   return (
@@ -102,7 +131,7 @@ function ExplanationBlock({
           {explanationText && (
             <div
               className="text-xs sm:text-sm text-neutral-300 font-sans leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: renderMath(explanationText) }}
+              dangerouslySetInnerHTML={{ __html: explanationHtml }}
             />
           )}
           {explanationImageSrc && (
@@ -117,6 +146,8 @@ function ExplanationBlock({
               <img
                 src={explanationImageSrc}
                 alt="Explanation diagram"
+                loading="lazy"
+                decoding="async"
                 className="max-h-56 w-full object-contain rounded-lg"
               />
             </div>
@@ -301,6 +332,9 @@ export const StudyCard = React.memo(function StudyCard({
   const frontText = getFrontText(card, swapTermDef)
   const backText = getBackText(card, swapTermDef)
 
+  const frontHtml = useMemo(() => renderMath(frontText), [frontText])
+  const backHtml = useMemo(() => renderMath(backText), [backText])
+
   const frontLabel = isFormulaCard
     ? (swapTermDef ? 'Formula' : 'Name')
     : (swapTermDef ? 'Definition' : 'Term')
@@ -354,7 +388,6 @@ export const StudyCard = React.memo(function StudyCard({
               left: 0,
               right: 0,
               top: 0,
-              minHeight: '100%',
               backfaceVisibility: 'hidden',
               WebkitBackfaceVisibility: 'hidden',
             }}
@@ -413,7 +446,7 @@ export const StudyCard = React.memo(function StudyCard({
                 className="w-full flex justify-center items-center"
               >
                 <AutoFitText
-                  html={renderMath(frontText)}
+                  html={frontHtml}
                   className={`${getCardDynamicFontSize(frontText)} font-semibold text-neutral-100 leading-relaxed max-w-full break-words`}
                 />
               </div>
@@ -430,6 +463,8 @@ export const StudyCard = React.memo(function StudyCard({
                   <img
                     src={frontImageSrc}
                     alt="Card diagram"
+                    loading="lazy"
+                    decoding="async"
                     className="max-h-60 landscape:max-h-72 w-full object-contain rounded-lg"
                   />
                 </div>
@@ -453,7 +488,6 @@ export const StudyCard = React.memo(function StudyCard({
               left: 0,
               right: 0,
               top: 0,
-              minHeight: '100%',
               backfaceVisibility: 'hidden',
               WebkitBackfaceVisibility: 'hidden',
               transform: 'rotateY(180deg)',
@@ -513,7 +547,7 @@ export const StudyCard = React.memo(function StudyCard({
                 className="w-full flex justify-center items-center"
               >
                 <AutoFitText
-                  html={renderMath(backText)}
+                  html={backHtml}
                   className={`${getCardDynamicFontSize(backText)} font-semibold text-neutral-100 leading-relaxed max-w-full break-words`}
                 />
               </div>
@@ -530,6 +564,8 @@ export const StudyCard = React.memo(function StudyCard({
                   <img
                     src={backImageSrc}
                     alt="Card back diagram"
+                    loading="lazy"
+                    decoding="async"
                     className="max-h-60 landscape:max-h-72 w-full object-contain rounded-lg"
                   />
                 </div>

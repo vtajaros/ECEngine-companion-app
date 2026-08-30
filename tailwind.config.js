@@ -5,7 +5,11 @@ export default {
     './src/**/*.{ts,tsx}',
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        display: ['Orbitron', 'sans-serif'],
+      },
+    },
   },
   plugins: [],
 }

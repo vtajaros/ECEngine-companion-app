@@ -13,7 +13,7 @@ interface AutoFitTextProps {
 export const AutoFitText: React.FC<AutoFitTextProps> = ({
   html,
   className,
-  minScale = 0.4,
+  minScale = 0.15,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -26,7 +26,11 @@ export const AutoFitText: React.FC<AutoFitTextProps> = ({
         const contentWidth = contentRef.current.scrollWidth
 
         if (contentWidth > containerWidth && containerWidth > 0) {
-          // Add 5% margin so equation does not touch the absolute border edges
+          // Add 5% margin so equation does not touch the absolute border edges.
+          // minScale is now a low floor (0.15), not a hard clip point — very
+          // long bundled formulas need to keep shrinking rather than get cut
+          // off. The user can pinch-to-zoom back in via StudyCard's existing
+          // zoom gesture if a shrunk formula becomes hard to read.
           const calculatedScale = (containerWidth * 0.95) / contentWidth
           setScale(Math.max(calculatedScale, minScale))
         } else {

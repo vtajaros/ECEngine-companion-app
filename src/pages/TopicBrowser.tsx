@@ -128,7 +128,6 @@ export function TopicBrowser({
   const [isFolderDrawerOpen, setIsFolderDrawerOpen] = useState<boolean>(false)
   const [sortMode, setSortMode] = useState<SortMode>('date-desc')
   const [isSortMenuOpen, setIsSortMenuOpen] = useState<boolean>(false)
-  const [includeMcqInFlashcards, setIncludeMcqInFlashcards] = useState<boolean>(false)
   const [topics, setTopics] = useState<TopicWithCardCount[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [isImporting, setIsImporting] = useState<boolean>(false)
@@ -258,16 +257,14 @@ export function TopicBrowser({
         return deckType === 'mcq' || deckType === 'mixed'
       }
       if (mode === 'flashcards') {
-        if (deckType === 'flashcard' || deckType === 'mixed') return true
-        if (includeMcqInFlashcards && deckType === 'mcq') return true
-        return false
+        return deckType === 'flashcard' || deckType === 'mixed'
       }
       if (mode === 'formulas') {
         return deckType === 'formula'
       }
       return false
     })
-  }, [topics, mode, includeMcqInFlashcards])
+  }, [topics, mode])
 
   // Topics matching the current mode + folder selection (subject/search
   // filters are applied after this, in filteredTopics below)
@@ -423,8 +420,8 @@ export function TopicBrowser({
               className="h-8 w-8 object-contain shrink-0"
             />
             <div>
-              <h1 className="text-base font-semibold tracking-tight text-neutral-100 sm:text-lg">
-                ECEngine Companion
+              <h1 className="font-['Orbitron'] text-base font-bold tracking-wider text-white sm:text-lg">
+                <span className="text-[#00ff41]">ECE</span>ngine Companion
               </h1>
               <p className="text-[11px] text-neutral-400">
                 {isLoading
@@ -566,23 +563,7 @@ export function TopicBrowser({
       {/* Main Content Area */}
       <main className="flex-1 px-4 py-4 sm:px-6 pb-24">
         <div className="mx-auto max-w-5xl">
-          {/* Flashcards "Include MCQ decks" toggle */}
-          {mode === 'flashcards' && !isLoading && !error && (
-            <div className="mb-4 flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/60 px-3.5 py-2">
-              <label className="inline-flex items-center gap-2 text-xs font-medium text-neutral-300 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={includeMcqInFlashcards}
-                  onChange={(e) => setIncludeMcqInFlashcards(e.target.checked)}
-                  className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-[#00ff41] accent-[#00ff41] focus:ring-0 focus:ring-offset-0 transition-colors"
-                />
-                <span>Include MCQ decks</span>
-              </label>
-              <span className="text-[11px] text-neutral-500 font-mono">
-                {topicsForMode.length} decks available
-              </span>
-            </div>
-          )}
+
 
           {/* Loading State */}
           {isLoading && (
@@ -795,25 +776,9 @@ export function TopicBrowser({
         </div>
       </main>
 
-      {/* Bottom Tab Bar */}
+      {/* Bottom Tab Bar — Flashcards | LooksFam | Formulas, plain style */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-neutral-800/90 bg-neutral-950/95 backdrop-blur-md pb-[env(safe-area-inset-bottom,0px)]">
         <div className="mx-auto flex max-w-md items-center justify-around px-2 py-2">
-          <button
-            type="button"
-            onClick={() => setMode('looksfam')}
-            className={`flex flex-1 flex-col items-center gap-1 py-1 text-xs font-medium transition-all active:scale-95 ${
-              mode === 'looksfam'
-                ? 'text-[#00ff41]'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <GraduationCap
-              size={20}
-              className={mode === 'looksfam' ? 'drop-shadow-[0_0_8px_rgba(0,255,65,0.4)]' : ''}
-            />
-            <span className="text-[11px] tracking-tight">LooksFam</span>
-          </button>
-
           <button
             type="button"
             onClick={() => setMode('flashcards')}
@@ -828,6 +793,22 @@ export function TopicBrowser({
               className={mode === 'flashcards' ? 'drop-shadow-[0_0_8px_rgba(0,255,65,0.4)]' : ''}
             />
             <span className="text-[11px] tracking-tight">Flashcards</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMode('looksfam')}
+            className={`flex flex-1 flex-col items-center gap-1 py-1 text-xs font-medium transition-all active:scale-95 ${
+              mode === 'looksfam'
+                ? 'text-[#00ff41]'
+                : 'text-neutral-400 hover:text-neutral-200'
+            }`}
+          >
+            <GraduationCap
+              size={20}
+              className={mode === 'looksfam' ? 'drop-shadow-[0_0_8px_rgba(0,255,65,0.4)]' : ''}
+            />
+            <span className="text-[11px] tracking-tight">LooksFam</span>
           </button>
 
           <button

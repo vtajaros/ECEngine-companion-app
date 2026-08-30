@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { Card, MCQData, FlashcardData, FormulaData } from '../types'
 import { renderMath, renderPlainText } from '../lib/latex'
+import { splitBundledLatex } from '../components/StudyCard'
 import { resolveImageSrc } from '../services/image.service'
 import { dbService } from '../services/db.service'
 import { ImageLightbox } from '../components/ImageLightbox'
@@ -118,11 +119,16 @@ function MathText({
   plainText?: boolean
   className?: string
 }) {
+  const html = useMemo(
+    () => (plainText ? renderPlainText(text) : renderMath(text)),
+    [text, plainText]
+  )
+
   return (
     <span
       style={style}
       className={className}
-      dangerouslySetInnerHTML={{ __html: plainText ? renderPlainText(text) : renderMath(text) }}
+      dangerouslySetInnerHTML={{ __html: html }}
     />
   )
 }
@@ -161,6 +167,8 @@ function PaperImage({
     <img
       src={src}
       alt={alt}
+      loading="lazy"
+      decoding="async"
       style={{ cursor: 'zoom-in', ...style }}
       className={className}
       onClick={(e) => {
@@ -627,6 +635,16 @@ const FormulaItem = memo(function FormulaItem({ index, card, onZoom }: FormulaIt
   const { name, latex, variables, imagePath, imagePathFront } = card.data
   const vars = variables as unknown
 
+  const latexHtml = useMemo(() => {
+    if (!latex) return ''
+    if (card.data.backIsPlainText) return renderMath(latex)
+    return renderMath(
+      splitBundledLatex(latex)
+        .map((segment) => `$$${segment}$$`)
+        .join('\n\n')
+    )
+  }, [latex, card.data.backIsPlainText])
+
   return (
     <div
       style={{
@@ -675,7 +693,7 @@ const FormulaItem = memo(function FormulaItem({ index, card, onZoom }: FormulaIt
             textAlign: 'center',
           }}
           dangerouslySetInnerHTML={{
-            __html: renderMath(card.data.backIsPlainText ? latex : `$$${latex}$$`),
+            __html: latexHtml,
           }}
         />
       )}

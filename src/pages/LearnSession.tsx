@@ -552,6 +552,8 @@ Please explain:
                     <img
                       src={questionImageSrc}
                       alt="Question diagram"
+                      loading="lazy"
+                      decoding="async"
                       className="max-h-64 w-full object-contain rounded-lg"
                     />
                   </div>
@@ -637,6 +639,8 @@ Please explain:
                       <img
                         src={solutionImageSrc}
                         alt="Solution diagram"
+                        loading="lazy"
+                        decoding="async"
                         className="max-h-64 w-full object-contain rounded-lg"
                       />
                     </div>

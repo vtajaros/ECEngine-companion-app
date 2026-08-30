@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Sparkles, Terminal, Copy, Check, AlertCircle, X } from 'lucide-react'
 import { getFlashcardExplanation, ExplainError } from '../services/explain.service'
 import { renderMath } from '../lib/latex'
@@ -66,6 +66,57 @@ export function FlashcardContextPanel({
     }
   }
 
+  interface FormattedParagraph {
+    isNumberedList: boolean
+    isCallout: boolean
+    headerHtml?: string
+    listHtml?: string[]
+    paragraphHtml?: string
+  }
+
+  const parsedParagraphs = useMemo<FormattedParagraph[]>(() => {
+    if (!explanation) return []
+
+    const formattedExplanation = /^\s*(\*\*Explanation:\*\*|\*\*Explanation\*\*|Explanation:)/i.test(explanation.trim())
+      ? explanation.trim()
+      : `**Explanation:** ${explanation.trim()}`
+
+    return formattedExplanation
+      .split(/\n\s*\n/)
+      .filter((p) => p.trim())
+      .map((paragraph) => {
+        const isCallout = /^\s*(\*\*Key Formula or Example:\*\*|Key Formula or Example:|\*\*Key Formula:\*\*|Key Formula:|\*\*Memory Tip:\*\*|Memory Tip:)/i.test(paragraph)
+        const lines = paragraph.trim().split('\n')
+        const numberedLines = lines.filter((l) => /^\s*\d+[.)]\s/.test(l.trim()))
+        const isNumberedList = !isCallout && lines.length > 1 && numberedLines.length >= 2
+
+        if (isNumberedList) {
+          const headerLines: string[] = []
+          const listLines: string[] = []
+          for (const line of lines) {
+            if (/^\s*\d+[.)]\s/.test(line.trim())) {
+              listLines.push(line.trim())
+            } else {
+              headerLines.push(line.trim())
+            }
+          }
+
+          return {
+            isNumberedList: true,
+            isCallout: false,
+            headerHtml: headerLines.length > 0 ? renderMath(headerLines.join(' ')) : undefined,
+            listHtml: listLines.map((line) => renderMath(line)),
+          }
+        }
+
+        return {
+          isNumberedList: false,
+          isCallout,
+          paragraphHtml: renderMath(paragraph.trim()),
+        }
+      })
+  }, [explanation])
+
   return (
     <div className="rounded-xl border border-[#00ff41]/30 bg-neutral-950/95 my-2.5 overflow-hidden shadow-lg transition-all animate-in fade-in duration-200">
       {/* Terminal Style Header */}
@@ -123,62 +174,38 @@ export function FlashcardContextPanel({
 
         {!loading && explanation && (
           <div className="space-y-3.5">
-            {(() => {
-              const formattedExplanation = /^\s*(\*\*Explanation:\*\*|\*\*Explanation\*\*|Explanation:)/i.test(explanation.trim())
-                ? explanation.trim()
-                : `**Explanation:** ${explanation.trim()}`
+            {parsedParagraphs.map((p, idx) => {
+              if (p.isNumberedList) {
+                return (
+                  <div key={idx} className="space-y-1.5 pl-1">
+                    {p.headerHtml && (
+                      <div dangerouslySetInnerHTML={{ __html: p.headerHtml }} />
+                    )}
+                    <ol className="list-none space-y-1.5 pl-0">
+                      {p.listHtml?.map((itemHtml, li) => (
+                        <li
+                          key={li}
+                          className="leading-relaxed"
+                          dangerouslySetInnerHTML={{ __html: itemHtml }}
+                        />
+                      ))}
+                    </ol>
+                  </div>
+                )
+              }
 
-              return formattedExplanation
-                .split(/\n\s*\n/)
-                .filter((p) => p.trim())
-                .map((paragraph, idx) => {
-                  const isCallout = /^\s*(\*\*Key Formula or Example:\*\*|Key Formula or Example:|\*\*Key Formula:\*\*|Key Formula:|\*\*Memory Tip:\*\*|Memory Tip:)/i.test(paragraph)
-                  const lines = paragraph.trim().split('\n')
-                  const numberedLines = lines.filter((l) => /^\s*\d+[.)]\s/.test(l.trim()))
-                  const isNumberedList = !isCallout && lines.length > 1 && numberedLines.length >= 2
-
-                  if (isNumberedList) {
-                    const headerLines: string[] = []
-                    const listLines: string[] = []
-                    for (const line of lines) {
-                      if (/^\s*\d+[.)]\s/.test(line.trim())) {
-                        listLines.push(line.trim())
-                      } else {
-                        headerLines.push(line.trim())
-                      }
-                    }
-
-                    return (
-                      <div key={idx} className="space-y-1.5 pl-1">
-                        {headerLines.length > 0 && (
-                          <div dangerouslySetInnerHTML={{ __html: renderMath(headerLines.join(' ')) }} />
-                        )}
-                        <ol className="list-none space-y-1.5 pl-0">
-                          {listLines.map((line, li) => (
-                            <li
-                              key={li}
-                              className="leading-relaxed"
-                              dangerouslySetInnerHTML={{ __html: renderMath(line) }}
-                            />
-                          ))}
-                        </ol>
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <div
-                      key={idx}
-                      className={`relative transition-colors ${
-                        isCallout
-                          ? 'border-l-2 border-[#00ff41] pl-3 py-1.5 my-1.5 bg-[#00ff41]/5 rounded-r text-neutral-100'
-                          : 'pl-1'
-                      }`}
-                      dangerouslySetInnerHTML={{ __html: renderMath(paragraph.trim()) }}
-                    />
-                  )
-                })
-            })()}
+              return (
+                <div
+                  key={idx}
+                  className={`relative transition-colors ${
+                    p.isCallout
+                      ? 'border-l-2 border-[#00ff41] pl-3 py-1.5 my-1.5 bg-[#00ff41]/5 rounded-r text-neutral-100'
+                      : 'pl-1'
+                  }`}
+                  dangerouslySetInnerHTML={{ __html: p.paragraphHtml || '' }}
+                />
+              )
+            })}
           </div>
         )}
 

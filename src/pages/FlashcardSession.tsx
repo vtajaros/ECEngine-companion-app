@@ -382,6 +382,7 @@ Provide a thorough explanation covering ALL of the following:
             <div className="flex flex-col gap-4">
               {/* Card Face */}
               <StudyCard
+                key={currentCard.id}
                 card={currentCard}
                 currentIndex={currentIndex}
                 isFlipped={isFlipped}
