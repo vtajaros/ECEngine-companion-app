@@ -11,13 +11,17 @@ import {
   Play,
   ClipboardList,
   FileText,
+  Folder as FolderIcon,
+  ArrowUpDown,
+  Check,
 } from 'lucide-react'
-import { openDatabase, dbService, TopicWithCardCount, getPreviouslyImportedDbPath } from '../services/db.service'
+import { openDatabase, dbService, TopicWithCardCount, getPreviouslyImportedDbPath, Folder } from '../services/db.service'
 import { importDatabaseFile, UserCancelledError } from '../services/import.service'
 import { getSubjectBadgeClasses, getSubjectFilterClasses, SUBJECT_MAP } from '../lib/subjectColors'
 import { LearnSettingsModal, LearnSettings, DEFAULT_LEARN_SETTINGS } from '../components/LearnSettingsModal'
 import { TestSettingsModal, DEFAULT_TEST_SETTINGS } from '../components/TestSettingsModal'
 import { FlashcardSettingsModal, FlashcardSettings, DEFAULT_FLASHCARD_SETTINGS } from '../components/FlashcardSettingsModal'
+import { FolderDrawer } from '../components/FolderDrawer'
 import type { TestSettings } from '../pages/TestMode'
 import appIcon from '../assets/images/ecengine-icon.png'
 
@@ -69,7 +73,20 @@ function formatTypeChip(type: string): string {
 
 const SUBJECT_ORDER = ['MATH', 'ELECS', 'GEAS', 'EST']
 
+type SortMode = 'date-desc' | 'date-asc' | 'name-asc' | 'name-desc'
+
+const SORT_OPTIONS: { value: SortMode; label: string }[] = [
+  { value: 'date-desc', label: 'Newest First' },
+  { value: 'date-asc', label: 'Oldest First' },
+  { value: 'name-asc', label: 'Name A-Z' },
+  { value: 'name-desc', label: 'Name Z-A' },
+]
+
 export interface TopicBrowserProps {
+  folders?: Folder[]
+  formulaFolders?: Folder[]
+  selectedFolderId?: string | 'all'
+  onSelectedFolderIdChange?: (id: string | 'all') => void
   mode?: BrowserMode
   onModeChange?: (mode: BrowserMode) => void
   searchQuery?: string
@@ -89,6 +106,10 @@ export interface TopicBrowserProps {
 }
 
 export function TopicBrowser({
+  folders: controlledFolders,
+  formulaFolders: controlledFormulaFolders,
+  selectedFolderId: controlledSelectedFolderId,
+  onSelectedFolderIdChange,
   mode: controlledMode,
   onModeChange,
   searchQuery: controlledSearchQuery,
@@ -101,6 +122,12 @@ export function TopicBrowser({
   onOpenSettings,
 }: TopicBrowserProps = {}) {
   const [localMode, setLocalMode] = useState<BrowserMode>('looksfam')
+  const [localFolders] = useState<Folder[]>([])
+  const [localFormulaFolders] = useState<Folder[]>([])
+  const [localSelectedFolderId, setLocalSelectedFolderId] = useState<string | 'all'>('all')
+  const [isFolderDrawerOpen, setIsFolderDrawerOpen] = useState<boolean>(false)
+  const [sortMode, setSortMode] = useState<SortMode>('date-desc')
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState<boolean>(false)
   const [includeMcqInFlashcards, setIncludeMcqInFlashcards] = useState<boolean>(false)
   const [topics, setTopics] = useState<TopicWithCardCount[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
@@ -108,6 +135,28 @@ export function TopicBrowser({
   const [error, setError] = useState<string | null>(null)
   const [localSearchQuery, setLocalSearchQuery] = useState<string>('')
   const [localSelectedSubject, setLocalSelectedSubject] = useState<string>('ALL')
+
+  const folders = controlledFolders ?? localFolders
+  const formulaFolders = controlledFormulaFolders ?? localFormulaFolders
+  const selectedFolderId = controlledSelectedFolderId ?? localSelectedFolderId
+  const setSelectedFolderId = onSelectedFolderIdChange ?? setLocalSelectedFolderId
+
+  const activeFolders = controlledMode === 'formulas' || localMode === 'formulas'
+    ? formulaFolders
+    : folders
+
+  // Resolve the selected folder into a set of matching folder ids — selecting
+  // a root folder also includes its direct child folders (max nesting depth
+  // is 1), since topics are only ever linked to the leaf folder they live in,
+  // never to a parent folder directly.
+  const effectiveFolderIds = useMemo(() => {
+    if (selectedFolderId === 'all') return null
+    const ids = new Set<string>([selectedFolderId])
+    activeFolders.forEach((f) => {
+      if (f.parentId === selectedFolderId) ids.add(f.id)
+    })
+    return ids
+  }, [selectedFolderId, activeFolders])
 
   const mode = controlledMode ?? localMode
   const setMode = onModeChange ?? setLocalMode
@@ -220,10 +269,43 @@ export function TopicBrowser({
     })
   }, [topics, mode, includeMcqInFlashcards])
 
+  // Topics matching the current mode + folder selection (subject/search
+  // filters are applied after this, in filteredTopics below)
+  const folderFilteredTopics = useMemo(() => {
+    if (!effectiveFolderIds) return topicsForMode
+    return topicsForMode.filter((t) => t.folderId && effectiveFolderIds.has(t.folderId))
+  }, [topicsForMode, effectiveFolderIds])
+
+  // Per-folder item counts, computed from topicsForMode (mode-filtered but
+  // NOT folder-filtered — these are facet totals, same convention as
+  // subjectCounts before folder filtering was added). Root folders roll up
+  // their direct children's counts so the badge shown next to a parent
+  // folder matches everything selecting that parent would surface.
+  const folderCounts = useMemo(() => {
+    const ownCounts: Record<string, number> = {}
+    activeFolders.forEach((f) => { ownCounts[f.id] = 0 })
+    topicsForMode.forEach((t) => {
+      if (t.folderId && ownCounts[t.folderId] !== undefined) {
+        ownCounts[t.folderId] += 1
+      }
+    })
+    const byId: Record<string, number> = {}
+    activeFolders.forEach((f) => {
+      if (f.parentId === null) {
+        const children = activeFolders.filter((c) => c.parentId === f.id)
+        const childSum = children.reduce((sum, c) => sum + (ownCounts[c.id] ?? 0), 0)
+        byId[f.id] = (ownCounts[f.id] ?? 0) + childSum
+      } else {
+        byId[f.id] = ownCounts[f.id] ?? 0
+      }
+    })
+    return { total: topicsForMode.length, byId }
+  }, [activeFolders, topicsForMode])
+
   // Derive distinct subjects from current mode's topics
   const availableSubjects = useMemo(() => {
     const set = new Set<string>()
-    topicsForMode.forEach((t) => {
+    folderFilteredTopics.forEach((t) => {
       if (t.subject && t.subject.trim() !== '') {
         set.add(t.subject.trim())
       }
@@ -238,17 +320,17 @@ export function TopicBrowser({
       return ai - bi
     })
     return ['ALL', ...sorted]
-  }, [topicsForMode])
+  }, [folderFilteredTopics])
 
   // Count topics per subject for badge counters based on current mode
   const subjectCounts = useMemo(() => {
-    const counts: Record<string, number> = { ALL: topicsForMode.length }
-    topicsForMode.forEach((t) => {
+    const counts: Record<string, number> = { ALL: folderFilteredTopics.length }
+    folderFilteredTopics.forEach((t) => {
       const sub = t.subject ? t.subject.trim() : 'OTHER'
       counts[sub] = (counts[sub] || 0) + 1
     })
     return counts
-  }, [topicsForMode])
+  }, [folderFilteredTopics])
 
   // Auto-reset subject filter if the selected subject does not exist in current mode
   useEffect(() => {
@@ -257,16 +339,48 @@ export function TopicBrowser({
     }
   }, [isLoading, availableSubjects, selectedSubject, setSelectedSubject])
 
-  // Filter topics by subject and search query
+  // Auto-reset folder filter if the selected folder does not exist in active scope
+  useEffect(() => {
+    if (!isLoading && selectedFolderId !== 'all') {
+      const exists = activeFolders.some((f) => f.id === selectedFolderId)
+      if (!exists && activeFolders.length > 0) {
+        setSelectedFolderId('all')
+      }
+    }
+  }, [isLoading, activeFolders, selectedFolderId, setSelectedFolderId])
+
+  // Filter topics by folder, subject and search query
   const filteredTopics = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    return topicsForMode.filter((t) => {
+    return folderFilteredTopics.filter((t) => {
       const matchesSubject =
         selectedSubject === 'ALL' || (t.subject && t.subject.trim() === selectedSubject)
       const matchesQuery = !q || t.name.toLowerCase().includes(q)
       return matchesSubject && matchesQuery
     })
-  }, [topicsForMode, selectedSubject, searchQuery])
+  }, [folderFilteredTopics, selectedSubject, searchQuery])
+
+  // Final display order — sort mode chosen from the header sort menu. This
+  // does not affect header/badge counts, which still read from
+  // filteredTopics — only the rendered grid order changes.
+  const sortedTopics = useMemo(() => {
+    const arr = [...filteredTopics]
+    switch (sortMode) {
+      case 'date-desc':
+        arr.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+        break
+      case 'date-asc':
+        arr.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+        break
+      case 'name-asc':
+        arr.sort((a, b) => a.name.localeCompare(b.name))
+        break
+      case 'name-desc':
+        arr.sort((a, b) => b.name.localeCompare(a.name))
+        break
+    }
+    return arr
+  }, [filteredTopics, sortMode])
 
 
   const handleLearnStart = () => {
@@ -315,20 +429,67 @@ export function TopicBrowser({
               <p className="text-[11px] text-neutral-400">
                 {isLoading
                   ? 'Loading topics...'
-                  : `${topicsForMode.length} topic${topicsForMode.length === 1 ? '' : 's'}`}
+                  : `${filteredTopics.length} topic${filteredTopics.length === 1 ? '' : 's'}`}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {topics.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setIsFolderDrawerOpen(true)}
+              title="Folders"
+              className={`p-1.5 rounded-lg border bg-neutral-900 active:scale-95 transition-all ${
+                selectedFolderId !== 'all'
+                  ? 'border-[#00ff41]/50 text-[#00ff41] shadow-[0_0_8px_rgba(0,255,65,0.25)]'
+                  : 'border-neutral-800 text-neutral-400 hover:text-[#00ff41]'
+              }`}
+            >
+              <FolderIcon size={15} />
+            </button>
+            <div className="relative">
               <button
-                onClick={fetchTopics}
-                title="Refresh topics"
-                className="p-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-[#00ff41] active:scale-95 transition-all"
+                type="button"
+                onClick={() => setIsSortMenuOpen((v) => !v)}
+                title="Sort topics"
+                className={`p-1.5 rounded-lg border bg-neutral-900 active:scale-95 transition-all ${
+                  isSortMenuOpen
+                    ? 'border-[#00ff41]/50 text-[#00ff41]'
+                    : 'border-neutral-800 text-neutral-400 hover:text-[#00ff41]'
+                }`}
               >
-                <RefreshCw size={15} className={isLoading ? 'animate-spin text-[#00ff41]' : ''} />
+                <ArrowUpDown size={15} />
               </button>
-            )}
+              {isSortMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-30"
+                    onClick={() => setIsSortMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1.5 z-40 w-40 rounded-xl border border-neutral-800 bg-neutral-950 shadow-2xl overflow-hidden">
+                    {SORT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setSortMode(opt.value)
+                          setIsSortMenuOpen(false)
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wider text-left transition-colors ${
+                          sortMode === opt.value
+                            ? 'text-[#00ff41] bg-[#00ff41]/10'
+                            : 'text-neutral-300 hover:bg-neutral-900'
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {sortMode === opt.value && (
+                          <Check size={13} className="text-[#00ff41]" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             {onOpenSettings && (
               <button
                 type="button"
@@ -493,7 +654,7 @@ export function TopicBrowser({
           {/* Topics Grid */}
           {!isLoading && !error && filteredTopics.length > 0 && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredTopics.map((topic) => {
+              {sortedTopics.map((topic) => {
                 // Parse comma-separated types into distinct cleaned tags
                 const parsedTypes = topic.types
                   ? topic.types
@@ -715,6 +876,16 @@ export function TopicBrowser({
         onStart={handleFlashcardStart}
         onClose={() => setFlashcardModalTopic(null)}
         cardType={mode === 'formulas' ? 'formula' : 'flashcard'}
+      />
+
+      {/* Folder Drawer */}
+      <FolderDrawer
+        isOpen={isFolderDrawerOpen}
+        onClose={() => setIsFolderDrawerOpen(false)}
+        folders={activeFolders}
+        selectedFolderId={selectedFolderId}
+        onSelect={setSelectedFolderId}
+        folderCounts={folderCounts}
       />
     </div>
   )

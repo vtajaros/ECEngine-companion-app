@@ -9,7 +9,7 @@ import { LearnSettings, DEFAULT_LEARN_SETTINGS } from './components/LearnSetting
 import { DEFAULT_TEST_SETTINGS } from './components/TestSettingsModal'
 import { FlashcardSettings, DEFAULT_FLASHCARD_SETTINGS } from './components/FlashcardSettingsModal'
 import type { LearnPipelineSettings } from './lib/learnPipeline'
-import { dbService } from './services/db.service'
+import { dbService, Folder, openDatabase, getPreviouslyImportedDbPath } from './services/db.service'
 import { Card } from './types'
 
 interface ActiveSession {
@@ -40,8 +40,45 @@ function App() {
   const [browserMode, setBrowserMode] = useState<BrowserMode>('looksfam')
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [selectedSubject, setSelectedSubject] = useState<string>('ALL')
+  const [selectedFolderId, setSelectedFolderId] = useState<string | 'all'>('all')
   const [scrollPosition, setScrollPosition] = useState<number>(0)
   const [dbVersion, setDbVersion] = useState(0)
+  const [folders, setFolders] = useState<Folder[]>([])
+  const [formulaFolders, setFormulaFolders] = useState<Folder[]>([])
+
+  // Fetch folders on mount / dbVersion change
+  useEffect(() => {
+    let isCancelled = false
+
+    const fetchFolders = async () => {
+      try {
+        const existingPath = await getPreviouslyImportedDbPath()
+        if (existingPath) {
+          try {
+            await openDatabase(existingPath)
+          } catch (err) {
+            console.warn('[App] Failed to auto-open previously imported DB:', err)
+          }
+        }
+        const [studyData, formulaData] = await Promise.all([
+          dbService.getFolders('study'),
+          dbService.getFolders('formula'),
+        ])
+        if (!isCancelled) {
+          setFolders(studyData)
+          setFormulaFolders(formulaData)
+        }
+      } catch (err) {
+        if (!isCancelled) console.warn('[App] Error fetching folders:', err)
+      }
+    }
+
+    fetchFolders()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [dbVersion])
 
   // Load cards for test mode when a test session begins
   useEffect(() => {
@@ -163,6 +200,10 @@ function App() {
   return (
     <TopicBrowser
       key={dbVersion}
+      folders={folders}
+      formulaFolders={formulaFolders}
+      selectedFolderId={selectedFolderId}
+      onSelectedFolderIdChange={setSelectedFolderId}
       mode={browserMode}
       onModeChange={setBrowserMode}
       searchQuery={searchQuery}

@@ -120,6 +120,13 @@ const CardWithProgressRowSchema = CardRowSchema.extend({
   last_result: z.string().nullable().optional(),
 })
 
+const FolderRowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  parent_id: z.string().nullable().optional(),
+  order_index: z.number().nullable().optional(),
+})
+
 const TopicWithCountRowSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -135,6 +142,13 @@ const TopicWithCountRowSchema = z.object({
 })
 
 // ── Types ───────────────────────────────────────────────────────────────────
+
+export interface Folder {
+  id: string
+  name: string
+  parentId: string | null
+  orderIndex: number
+}
 
 export interface TopicWithCardCount extends Topic {
   cardCount: number
@@ -206,9 +220,32 @@ function parseTopicRow(row: z.infer<typeof TopicWithCountRowSchema>): TopicWithC
   }
 }
 
+function parseFolderRow(row: z.infer<typeof FolderRowSchema>): Folder {
+  return {
+    id: row.id,
+    name: row.name,
+    parentId: row.parent_id ?? null,
+    orderIndex: row.order_index ?? 0,
+  }
+}
+
 // ── Service Implementation ──────────────────────────────────────────────────
 
 export const dbService = {
+  /**
+   * Fetch all folders for a given scope ('study' | 'formula').
+   */
+  getFolders: async (scope: 'study' | 'formula'): Promise<Folder[]> => {
+    const sql = `
+      SELECT id, name, parent_id, order_index
+      FROM folders
+      WHERE scope = ?
+      ORDER BY order_index, name
+    `
+    const rows = await executeQuery(sql, [scope])
+    return z.array(FolderRowSchema).parse(rows).map(parseFolderRow)
+  },
+
   /**
    * Fetch all topics joined with their card counts and card types list.
    * Matches desktop query: GROUP BY t.id ORDER BY t.name
