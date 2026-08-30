@@ -35,11 +35,45 @@ Built with **React 19**, **TypeScript**, **Tailwind CSS**, and **Capacitor 8**.
 - **Test Paper View**: Continuous, printable-style document viewer supporting Table, Glossary/List, and Q&A layouts with Light, Sepia, and Dark themes — display-only (no export/print/share; see Design Philosophy below).
 
 ### 🗂️ Topic Browser & Subject Filtering
-Instant filtering across the 4 Philippine ECE Board Exam subjects:
-- **MATH** — Algebra, Trigonometry, Analytic Geometry, Calculus, Differential Equations, Advanced Math
-- **ELECS** — Semiconductors, Analog/Digital Circuits, Op-Amps, Power Electronics
-- **GEAS** — Physics, Chemistry, Engineering Economy, Mechanics, Materials Science
-- **EST** — Communications, Transmission Lines, Antennas, Microwave, Satellite, Optical, Networking
+Instant filtering across the 4 Philippine ECE Board Exam subject areas:
+- **MATH (Mathematics — 7 Topics)**:
+  - 1.0 Differential Calculus
+  - 2.0 Integral Calculus
+  - 3.0 Differential Equation
+  - 4.0 Advanced Engineering Mathematics for ECE
+  - 5.0 Engineering Data Analysis
+  - 6.0 Electromagnetics
+  - 7.0 Signals, Spectra & Signal Processing
+  *(Note: Foundation topics such as Algebra, Trigonometry, and Analytic Geometry are not covered under the Mathematics subject area)*
+- **ELECS (Electronics Engineering — 9 Topics)**:
+  - 1.0 DC Electrical Circuits
+  - 2.0 AC Electrical Circuits
+  - 3.0 Electromagnetics
+  - 4.0 Electronic Devices and Circuits
+  - 5.0 Electronic Circuit Analysis and Design
+  - 6.0 Electronic Systems and Design
+  - 7.0 Logic Circuits and Switching Theory
+  - 8.0 Microprocessor and Microcontroller Systems
+  - 9.0 Feedback and Control Systems
+- **GEAS (General Engineering and Applied Sciences — 11 Topics)**:
+  - 1.0 Chemistry for Engineers
+  - 2.0 Physics for Engineers
+  - 3.0 Engineering Economics
+  - 4.0 Engineering Management
+  - 5.0 Technopreneurship 101
+  - 6.0 Physics 2
+  - 7.0 Materials Science and Engineering
+  - 8.0 Computer Programming
+  - 9.0 Environment Science and Engineering
+  - 10.0 ECE Laws, Contracts, Ethics, Standards and Safety
+  - 11.0 CAD
+- **EST (Electronics Systems and Technologies — 6 Topics)**:
+  - 1.0 Signals, Spectra, Signal Processing
+  - 2.0 Principles of Communications
+  - 3.0 Digital Communications
+  - 4.0 Transmission and Antenna Systems
+  - 5.0 Electronics 3: Electronic Systems and Design
+  - 6.0 Data Communications
 
 Supports MCQ, Flashcard, Formula, and Mixed deck types, with live per-subject deck counts.
 
