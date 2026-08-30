@@ -44,7 +44,6 @@ Instant filtering across the 4 Philippine ECE Board Exam subject areas:
   - 5.0 Engineering Data Analysis
   - 6.0 Electromagnetics
   - 7.0 Signals, Spectra & Signal Processing
-  *(Note: Foundation topics such as Algebra, Trigonometry, and Analytic Geometry are not covered under the Mathematics subject area)*
 - **ELECS (Electronics Engineering — 9 Topics)**:
   - 1.0 DC Electrical Circuits
   - 2.0 AC Electrical Circuits
