@@ -28,14 +28,72 @@ function getCardDynamicFontSize(text: string): string {
  * (e.g. "SWR = Z_L/Z_o ; (Z_L > Z_o)"). Rendering the whole string as one
  * KaTeX block produces an unbroken line that overflows the card. Splitting
  * here lets each formula/condition render on its own line instead.
+ *
+ * IMPORTANT: this must be brace-depth aware. Some cards author their ";" or
+ * "||" separator INSIDE a `\text{ ; }` or `\text{ || }` block as a formatted
+ * visual spacer rather than as a true top-level bundle separator. Splitting
+ * naively on any occurrence of these characters slices straight through the
+ * enclosing `\text{...}` macro, leaving unbalanced braces on both halves and
+ * causing KaTeX to fail to parse either piece. This implementation only
+ * treats ";" or "||" as a split point when brace depth is 0 (i.e. not nested
+ * inside any `{...}` group, which covers `\text{...}` since it's always
+ * wrapped in braces). A backslash always "escapes" the following character
+ * as a literal pair (so `\;`, a valid LaTeX thin-space command, and `\{`/`\}`
+ * are never misread as structural delimiters).
+ *
  * Exported so TestPaperView.tsx's FormulaItem can apply the same fix.
  */
 export function splitBundledLatex(latex: string): string[] {
-  return latex
-    .split(/\s*\|\|\s*/)
-    .flatMap((segment) => segment.split(/(?<!\\)\s*;\s*/))
-    .map((s) => s.trim())
-    .filter(Boolean)
+  const segments: string[] = []
+  let depth = 0
+  let current = ''
+  let i = 0
+
+  while (i < latex.length) {
+    const ch = latex[i]
+
+    if (ch === '\\') {
+      // Escaped character: consume backslash + next char as one literal
+      // unit so `\;`, `\{`, `\}` etc. are never treated as structural.
+      current += ch + (latex[i + 1] ?? '')
+      i += 2
+      continue
+    }
+
+    if (ch === '{') {
+      depth++
+      current += ch
+      i++
+      continue
+    }
+
+    if (ch === '}') {
+      depth = Math.max(0, depth - 1)
+      current += ch
+      i++
+      continue
+    }
+
+    if (depth === 0 && ch === '|' && latex[i + 1] === '|') {
+      segments.push(current)
+      current = ''
+      i += 2
+      continue
+    }
+
+    if (depth === 0 && ch === ';') {
+      segments.push(current)
+      current = ''
+      i++
+      continue
+    }
+
+    current += ch
+    i++
+  }
+
+  segments.push(current)
+  return segments.map((s) => s.trim()).filter(Boolean)
 }
 
 function formatFormulaBack(f: FormulaData): string {

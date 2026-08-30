@@ -256,9 +256,9 @@ export const renderMath = (text: string): string => {
   // ── Normalize non-standard / MathJax-only commands to KaTeX equivalents ──
   const normalized = text
     .replace(/\\exponentialE\b/g, 'e')           // Euler's number e
-    .replace(/\\imaginaryI\b/g, 'i')             // imaginary unit i
-    .replace(/\\imaginaryJ\b/g, 'j')             // imaginary unit j (engineering)
-    .replace(/\\differentialD\b/g, 'd')          // differential d
+    .replace(/\\imaginaryI\s*/g, 'i')            // imaginary unit i
+    .replace(/\\imaginaryJ\s*/g, 'j')            // imaginary unit j (engineering)
+    .replace(/\\differentialD\s*/g, 'd')         // differential d
     .replace(/\\capitalDifferentialD\b/g, 'D')   // D operator
     .replace(/\\DoubleStruckCapitalE\b/g, '\\mathbb{E}') // Expected value E
     .replace(/\\DoubleStruckCapitalN\b/g, '\\mathbb{N}') // Natural numbers

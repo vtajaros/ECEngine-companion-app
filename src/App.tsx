@@ -1,16 +1,36 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react'
 import { TopicBrowser, BrowserMode } from './pages/TopicBrowser'
-import { LearnSession } from './pages/LearnSession'
-import { TestMode, TestSettings } from './pages/TestMode'
-import { TestPaperView } from './pages/TestPaperView'
-import { FlashcardSession } from './pages/FlashcardSession'
-import { Settings } from './pages/Settings'
+import type { TestSettings } from './pages/TestMode'
 import { LearnSettings, DEFAULT_LEARN_SETTINGS } from './components/LearnSettingsModal'
 import { DEFAULT_TEST_SETTINGS } from './components/TestSettingsModal'
 import { FlashcardSettings, DEFAULT_FLASHCARD_SETTINGS } from './components/FlashcardSettingsModal'
 import type { LearnPipelineSettings } from './lib/learnPipeline'
 import { dbService, Folder, openDatabase, getPreviouslyImportedDbPath } from './services/db.service'
 import { Card } from './types'
+
+const LearnSession = lazy(() =>
+  import('./pages/LearnSession').then((m) => ({ default: m.LearnSession }))
+)
+const TestMode = lazy(() =>
+  import('./pages/TestMode').then((m) => ({ default: m.TestMode }))
+)
+const TestPaperView = lazy(() =>
+  import('./pages/TestPaperView').then((m) => ({ default: m.TestPaperView }))
+)
+const FlashcardSession = lazy(() =>
+  import('./pages/FlashcardSession').then((m) => ({ default: m.FlashcardSession }))
+)
+const SettingsPage = lazy(() =>
+  import('./pages/Settings').then((m) => ({ default: m.Settings }))
+)
+
+function SessionFallback() {
+  return (
+    <div className="flex h-screen w-full items-center justify-center bg-black">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-700 border-t-[#00ff41]" />
+    </div>
+  )
+}
 
 interface ActiveSession {
   topicId: string
@@ -140,60 +160,70 @@ function App() {
 
   if (showSettings) {
     return (
-      <Settings
-        onClose={() => setShowSettings(false)}
-        onDatabaseImported={() => {
-          setDbVersion((v) => v + 1)
-          setShowSettings(false)
-        }}
-      />
+      <Suspense fallback={<SessionFallback />}>
+        <SettingsPage
+          onClose={() => setShowSettings(false)}
+          onDatabaseImported={() => {
+            setDbVersion((v) => v + 1)
+            setShowSettings(false)
+          }}
+        />
+      </Suspense>
     )
   }
 
   if (activeSession && activeSession.mode === 'looksfam') {
     return (
-      <LearnSession
-        topicId={activeSession.topicId}
-        topicName={activeSession.topicName}
-        onExit={() => setActiveSession(null)}
-        onOpenSettings={() => setShowSettings(true)}
-        learnSettings={pipelineSettings}
-        ttsEnabled={activeSession.learnSettings?.ttsEnabled}
-      />
+      <Suspense fallback={<SessionFallback />}>
+        <LearnSession
+          topicId={activeSession.topicId}
+          topicName={activeSession.topicName}
+          onExit={() => setActiveSession(null)}
+          onOpenSettings={() => setShowSettings(true)}
+          learnSettings={pipelineSettings}
+          ttsEnabled={activeSession.learnSettings?.ttsEnabled}
+        />
+      </Suspense>
     )
   }
 
   if (activeSession && activeSession.mode === 'test') {
     return (
-      <TestMode
-        cards={testCards}
-        title={activeSession.topicName}
-        settings={memoizedTestSettings ?? DEFAULT_TEST_SETTINGS}
-        onExit={() => setActiveSession(null)}
-      />
+      <Suspense fallback={<SessionFallback />}>
+        <TestMode
+          cards={testCards}
+          title={activeSession.topicName}
+          settings={memoizedTestSettings ?? DEFAULT_TEST_SETTINGS}
+          onExit={() => setActiveSession(null)}
+        />
+      </Suspense>
     )
   }
 
   if (activeSession && activeSession.mode === 'testpaper') {
     return (
-      <TestPaperView
-        topicId={activeSession.topicId}
-        title={activeSession.topicName}
-        onExit={() => setActiveSession(null)}
-      />
+      <Suspense fallback={<SessionFallback />}>
+        <TestPaperView
+          topicId={activeSession.topicId}
+          title={activeSession.topicName}
+          onExit={() => setActiveSession(null)}
+        />
+      </Suspense>
     )
   }
 
   if (activeSession && (activeSession.mode === 'flashcards' || activeSession.mode === 'formulas')) {
     return (
-      <FlashcardSession
-        topicId={activeSession.topicId}
-        topicName={activeSession.topicName}
-        onExit={() => setActiveSession(null)}
-        onOpenSettings={() => setShowSettings(true)}
-        initialSettings={activeSession.flashcardSettings}
-        cardType={activeSession.mode === 'formulas' ? 'formula' : 'flashcard'}
-      />
+      <Suspense fallback={<SessionFallback />}>
+        <FlashcardSession
+          topicId={activeSession.topicId}
+          topicName={activeSession.topicName}
+          onExit={() => setActiveSession(null)}
+          onOpenSettings={() => setShowSettings(true)}
+          initialSettings={activeSession.flashcardSettings}
+          cardType={activeSession.mode === 'formulas' ? 'formula' : 'flashcard'}
+        />
+      </Suspense>
     )
   }
 
