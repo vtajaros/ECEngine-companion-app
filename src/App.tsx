@@ -41,16 +41,27 @@ function App() {
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [selectedSubject, setSelectedSubject] = useState<string>('ALL')
   const [scrollPosition, setScrollPosition] = useState<number>(0)
+  const [dbVersion, setDbVersion] = useState(0)
 
   // Load cards for test mode when a test session begins
   useEffect(() => {
+    let isCancelled = false
+
     if (activeSession && activeSession.mode === 'test') {
-      dbService.getCardsWithProgress(activeSession.topicId).then(setTestCards).catch((err) => {
-        console.error('[App] Failed to load cards for test:', err)
-      })
+      dbService.getCardsWithProgress(activeSession.topicId)
+        .then((cards) => {
+          if (!isCancelled) setTestCards(cards)
+        })
+        .catch((err) => {
+          if (!isCancelled) console.error('[App] Failed to load cards for test:', err)
+        })
     } else {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset test cards when leaving test session
       setTestCards([])
+    }
+
+    return () => {
+      isCancelled = true
     }
   }, [activeSession])
 
@@ -94,6 +105,10 @@ function App() {
     return (
       <Settings
         onClose={() => setShowSettings(false)}
+        onDatabaseImported={() => {
+          setDbVersion((v) => v + 1)
+          setShowSettings(false)
+        }}
       />
     )
   }
@@ -147,6 +162,7 @@ function App() {
 
   return (
     <TopicBrowser
+      key={dbVersion}
       mode={browserMode}
       onModeChange={setBrowserMode}
       searchQuery={searchQuery}

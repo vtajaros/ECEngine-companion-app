@@ -89,14 +89,3 @@ export interface Topic {
   createdAt?: number
   tags?: string[]
 }
-
-export interface ExamSession {
-  id: string
-  topicId?: string
-  mode: 'practice' | 'mock' | 'custom'
-  startedAt: string
-  finishedAt?: string
-  score: number
-  total: number
-  answers: Record<string, number>
-}

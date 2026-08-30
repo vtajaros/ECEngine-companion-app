@@ -15,8 +15,8 @@ export interface LearnSettings {
 
 export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   itemCount: 'All',
-  shuffleQuestions: false,
-  shuffleChoices: false,
+  shuffleQuestions: true,
+  shuffleChoices: true,
   bookmarkedOnly: false,
   randomSample: false,
   ttsEnabled: false,

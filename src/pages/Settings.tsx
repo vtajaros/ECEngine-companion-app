@@ -11,22 +11,28 @@ import {
   Trash2,
   FolderArchive,
   RefreshCw,
+  Database,
 } from 'lucide-react'
 import { Preferences } from '@capacitor/preferences'
 import {
   importImagesZip,
   getImportedImageCount,
   clearImportedImages,
-  UserCancelledError,
+  UserCancelledError as ImageUserCancelledError,
   InvalidImageZipError,
   ImportImagesProgress,
 } from '../services/image-import.service'
+import { importDatabaseFile, UserCancelledError as DbUserCancelledError } from '../services/import.service'
+import { openDatabase } from '../services/db.service'
+import { ConfirmModal } from '../components/ConfirmModal'
+import { GROQ_API_KEY_PREF } from '../config/app-config'
 
 export interface SettingsProps {
   onClose: () => void
+  onDatabaseImported: () => void
 }
 
-export function Settings({ onClose }: SettingsProps) {
+export function Settings({ onClose, onDatabaseImported }: SettingsProps) {
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [hasSavedKey, setHasSavedKey] = useState<boolean | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -39,13 +45,17 @@ export function Settings({ onClose }: SettingsProps) {
   const [imageError, setImageError] = useState<string | null>(null)
   const [imageSuccess, setImageSuccess] = useState<string | null>(null)
 
+  const [isReimporting, setIsReimporting] = useState(false)
+  const [reimportError, setReimportError] = useState<string | null>(null)
+  const [showReimportConfirm, setShowReimportConfirm] = useState(false)
+
   const refreshImageCount = async () => {
     const count = await getImportedImageCount()
     setImageCount(count)
   }
 
   useEffect(() => {
-    Preferences.get({ key: 'groq_api_key' }).then(({ value }) => {
+    Preferences.get({ key: GROQ_API_KEY_PREF }).then(({ value }) => {
       if (value && value.trim().length > 0) {
         setHasSavedKey(true)
         setApiKeyInput(value)
@@ -65,7 +75,7 @@ export function Settings({ onClose }: SettingsProps) {
 
     setIsSaving(true)
     try {
-      await Preferences.set({ key: 'groq_api_key', value: trimmed })
+      await Preferences.set({ key: GROQ_API_KEY_PREF, value: trimmed })
       setHasSavedKey(true)
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2500)
@@ -79,7 +89,7 @@ export function Settings({ onClose }: SettingsProps) {
   const handleClear = async () => {
     setIsSaving(true)
     try {
-      await Preferences.remove({ key: 'groq_api_key' })
+      await Preferences.remove({ key: GROQ_API_KEY_PREF })
       setApiKeyInput('')
       setHasSavedKey(false)
     } catch (err) {
@@ -103,7 +113,7 @@ export function Settings({ onClose }: SettingsProps) {
       setImageSuccess(`Imported ${result.importedCount} images (${result.skippedCount} skipped)`)
       setTimeout(() => setImageSuccess(null), 3500)
     } catch (err: unknown) {
-      if (err instanceof UserCancelledError) {
+      if (err instanceof ImageUserCancelledError) {
         // User closed picker; ignore
         return
       }
@@ -136,6 +146,28 @@ export function Settings({ onClose }: SettingsProps) {
     }
   }
 
+  const handleReimportDatabase = async () => {
+    setIsReimporting(true)
+    setReimportError(null)
+    try {
+      const resolvedPath = await importDatabaseFile()
+      await openDatabase(resolvedPath)
+      onDatabaseImported()
+    } catch (err: unknown) {
+      if (err instanceof DbUserCancelledError) {
+        return
+      }
+      setReimportError(err instanceof Error ? err.message : 'Failed to import database.')
+    } finally {
+      setIsReimporting(false)
+    }
+  }
+
+  const confirmReimportDatabase = () => {
+    setShowReimportConfirm(false)
+    handleReimportDatabase()
+  }
+
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-50 overflow-y-auto">
       {/* Header */}
@@ -162,8 +194,8 @@ export function Settings({ onClose }: SettingsProps) {
         <div className="mx-auto max-w-2xl flex flex-col gap-6">
           {/* Groq API Key Card */}
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 p-5 sm:p-7 shadow-sm">
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2.5 min-w-0 sm:flex-1">
                 <div className="p-2 rounded-xl bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/20">
                   <Key size={18} />
                 </div>
@@ -179,7 +211,7 @@ export function Settings({ onClose }: SettingsProps) {
 
               {hasSavedKey !== null && (
                 <div
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium border ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium border shrink-0 whitespace-nowrap ${
                     hasSavedKey
                       ? 'bg-[#00ff41]/10 text-[#00ff41] border-[#00ff41]/30'
                       : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
@@ -269,8 +301,8 @@ export function Settings({ onClose }: SettingsProps) {
 
           {/* Question & Solution Images Card */}
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 p-5 sm:p-7 shadow-sm">
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2.5 min-w-0 sm:flex-1">
                 <div className="p-2 rounded-xl bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/20">
                   <ImageIcon size={18} />
                 </div>
@@ -286,7 +318,7 @@ export function Settings({ onClose }: SettingsProps) {
 
               {imageCount !== null && (
                 <div
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium border ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium border shrink-0 whitespace-nowrap ${
                     imageCount > 0
                       ? 'bg-[#00ff41]/10 text-[#00ff41] border-[#00ff41]/30'
                       : 'bg-neutral-800 text-neutral-400 border-neutral-700'
@@ -369,8 +401,72 @@ export function Settings({ onClose }: SettingsProps) {
             </div>
           </div>
 
+          {/* Database Card */}
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 p-5 sm:p-7 shadow-sm">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/20">
+                  <Database size={18} />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-neutral-100">
+                    Database
+                  </h2>
+                  <p className="text-xs text-neutral-400">
+                    Replace the currently loaded question bank
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  disabled={isReimporting}
+                  onClick={() => setShowReimportConfirm(true)}
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl py-2.5 px-5 text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
+                    !isReimporting
+                      ? 'bg-[#00ff41] text-neutral-950 hover:bg-[#00ff41]/90 shadow-[0_0_15px_rgba(0,255,65,0.25)]'
+                      : 'bg-neutral-800 text-neutral-500 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  {isReimporting ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin text-[#00ff41]" />
+                      <span>Importing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={14} />
+                      <span>Reimport Database</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {reimportError && (
+                <div className="text-xs font-mono text-red-400 flex items-center gap-1.5 animate-in fade-in">
+                  <AlertTriangle size={14} />
+                  <span>{reimportError}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
       </main>
+
+      <ConfirmModal
+        isOpen={showReimportConfirm}
+        variant="default"
+        title="Replace Database?"
+        message="This will replace your currently loaded question bank with a new database file. This cannot be undone."
+        confirmLabel="Reimport"
+        cancelLabel="Cancel"
+        onConfirm={confirmReimportDatabase}
+        onCancel={() => setShowReimportConfirm(false)}
+      />
     </div>
   )
 }

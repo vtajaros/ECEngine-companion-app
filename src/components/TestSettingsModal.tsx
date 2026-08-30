@@ -5,8 +5,8 @@ import type { TestSettings } from '../pages/TestMode'
 export const DEFAULT_TEST_SETTINGS: TestSettings = {
   itemCount: 'All',
   instantChecking: false,
-  shuffleQuestions: false,
-  shuffleChoices: false,
+  shuffleQuestions: true,
+  shuffleChoices: true,
   bookmarkedOnly: false,
   randomSample: false,
 }

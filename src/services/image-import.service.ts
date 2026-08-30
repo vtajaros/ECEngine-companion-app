@@ -2,6 +2,7 @@ import { FilePicker } from '@capawesome/capacitor-file-picker'
 import { Filesystem, Directory } from '@capacitor/filesystem'
 import { unzipSync } from 'fflate'
 import { UserCancelledError } from './import.service'
+import { PICK_FILES_CANCELED_MSG } from '../config/app-config'
 
 export { UserCancelledError }
 
@@ -20,8 +21,6 @@ export const IMAGES_SUBDIR = 'ece-images'
 
 /** Supported image extensions (case-insensitive). */
 const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
-
-const PICK_FILES_CANCELED_MSG = 'pickFiles canceled.'
 
 export interface ImportImagesProgress {
   processed: number

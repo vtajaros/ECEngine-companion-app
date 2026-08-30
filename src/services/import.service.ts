@@ -52,6 +52,7 @@
 
 import { FilePicker } from '@capawesome/capacitor-file-picker'
 import { Filesystem, Directory } from '@capacitor/filesystem'
+import { DB_PRIVATE_FILENAME, PICK_FILES_CANCELED_MSG } from '../config/app-config'
 
 /** Sentinel error thrown when the user dismisses the file picker without selecting a file. */
 export class UserCancelledError extends Error {
@@ -68,16 +69,6 @@ export class InvalidDatabaseFileError extends Error {
     this.name = 'InvalidDatabaseFileError'
   }
 }
-
-/** Filename used when storing the database in the app's private Directory.Data. */
-const DB_PRIVATE_FILENAME = 'ecengine.sqlite'
-
-/**
- * Error message string emitted by @capawesome/capacitor-file-picker when the user
- * closes the picker without selecting a file (RESULT_CANCELED in Android).
- * Confirmed from FilePickerPlugin.java: ERROR_PICK_FILE_CANCELED = "pickFiles canceled."
- */
-const PICK_FILES_CANCELED_MSG = 'pickFiles canceled.'
 
 /**
  * Expected 16-byte magic header at the beginning of all standard SQLite 3 database files.

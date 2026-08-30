@@ -1,4 +1,5 @@
 import { Preferences } from '@capacitor/preferences'
+import { GROQ_API_KEY_PREF, GROQ_API_URL, GROQ_MODEL } from '../config/app-config'
 
 export interface ExplainParams {
   question: string
@@ -18,7 +19,7 @@ export class ExplainError extends Error {
 }
 
 export async function getExplanation(params: ExplainParams): Promise<string> {
-  const { value: apiKey } = await Preferences.get({ key: 'groq_api_key' })
+  const { value: apiKey } = await Preferences.get({ key: GROQ_API_KEY_PREF })
   if (!apiKey || apiKey.trim() === '') {
     throw new ExplainError('NO_KEY')
   }
@@ -58,14 +59,14 @@ STRICT FORMATTING RULES:
   const timeoutId = setTimeout(() => controller.abort(), 15000)
 
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const response = await fetch(GROQ_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey.trim()}`,
       },
       body: JSON.stringify({
-        model: 'openai/gpt-oss-120b',
+        model: GROQ_MODEL,
         messages: [
           {
             role: 'system',
@@ -120,7 +121,7 @@ export interface FlashcardExplainParams {
 }
 
 export async function getFlashcardExplanation(params: FlashcardExplainParams): Promise<string> {
-  const { value: apiKey } = await Preferences.get({ key: 'groq_api_key' })
+  const { value: apiKey } = await Preferences.get({ key: GROQ_API_KEY_PREF })
   if (!apiKey || apiKey.trim() === '') {
     throw new ExplainError('NO_KEY')
   }
@@ -148,14 +149,14 @@ STRICT FORMATTING RULES:
   const timeoutId = setTimeout(() => controller.abort(), 15000)
 
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const response = await fetch(GROQ_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey.trim()}`,
       },
       body: JSON.stringify({
-        model: 'openai/gpt-oss-120b',
+        model: GROQ_MODEL,
         messages: [
           {
             role: 'system',

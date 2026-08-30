@@ -78,9 +78,6 @@ export function ExplanationPanel({
           <span className="font-mono font-bold text-xs text-neutral-200 tracking-wider">
             AI EXPLANATION
           </span>
-          <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/20">
-            GPT-OSS-120B
-          </span>
         </div>
 
         <div className="flex items-center gap-1.5">

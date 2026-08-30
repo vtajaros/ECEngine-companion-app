@@ -831,7 +831,7 @@ export function TestPaperView({
       </header>
 
       {/* ── Toolbar ────────────────────────────────────────────────────────── */}
-      <div className="sticky top-[49px] z-30 flex flex-nowrap items-center gap-1.5 border-b border-neutral-800 bg-neutral-900/90 px-2 py-1.5 backdrop-blur-md shrink-0 justify-start sm:justify-center">
+      <div className="sticky top-[49px] z-30 flex flex-nowrap items-center gap-1.5 border-b border-neutral-800 bg-neutral-900/90 px-2 py-1.5 backdrop-blur-md shrink-0 justify-center overflow-x-auto">
         {/* Layout Toggle */}
         <div className="flex items-center gap-0.5 bg-neutral-950/80 p-0.5 rounded-lg border border-neutral-800 shrink-0">
           <button
