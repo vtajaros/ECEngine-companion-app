@@ -26,6 +26,17 @@ import { importDatabaseFile, UserCancelledError as DbUserCancelledError } from '
 import { openDatabase } from '../services/db.service'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { GROQ_API_KEY_PREF } from '../config/app-config'
+import { App as CapacitorApp } from '@capacitor/app'
+
+interface GroqUsageSnapshot {
+  limitRequests: string | null
+  remainingRequests: string | null
+  resetRequests: string | null
+  limitTokens: string | null
+  remainingTokens: string | null
+  resetTokens: string | null
+  fetchedAt: number
+}
 
 export interface SettingsProps {
   onClose: () => void
@@ -67,6 +78,32 @@ export function Settings({ onClose, onDatabaseImported }: SettingsProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Asynchronously fetch image count on mount
     refreshImageCount()
   }, [])
+
+  const [usage, setUsage] = useState<GroqUsageSnapshot | null>(null)
+
+  useEffect(() => {
+    Preferences.get({ key: 'groqUsageSnapshot' }).then(({ value }) => {
+      if (value) {
+        try {
+          const parsed = JSON.parse(value)
+          if (parsed && (parsed.limitRequests || parsed.limitTokens)) {
+            setUsage(parsed)
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      onClose()
+    })
+    return () => {
+      listenerPromise.then((handle) => handle.remove()).catch(() => {})
+    }
+  }, [onClose])
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -298,6 +335,79 @@ export function Settings({ onClose, onDatabaseImported }: SettingsProps) {
               </a>
             </div>
           </div>
+
+          {hasSavedKey && (
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 p-5 sm:p-7 shadow-sm">
+              <h2 className="text-base font-semibold text-neutral-100 mb-1">Usage Limits</h2>
+              <p className="text-xs text-neutral-400 mb-4">Your plan's rate limits, from the most recent explanation request.</p>
+
+              {!usage || (!usage.limitRequests && !usage.limitTokens) ? (
+                <p className="text-xs text-neutral-500 italic">Usage data available after first request this session.</p>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {usage.limitRequests && usage.remainingRequests && (
+                    <div>
+                      <div className="flex justify-between text-xs text-neutral-300 mb-1">
+                        <span>Current request usage</span>
+                        <span className="font-mono text-[#00ff41]">
+                          {Number(usage.limitRequests) - Number(usage.remainingRequests)} / {usage.limitRequests}
+                        </span>
+                      </div>
+                      <div className="w-full bg-neutral-800 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-[#00ff41] h-1.5 rounded-full"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.max(
+                                0,
+                                ((Number(usage.limitRequests) - Number(usage.remainingRequests)) /
+                                  Number(usage.limitRequests)) *
+                                  100
+                              )
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                      {usage.resetRequests && (
+                        <p className="text-[10px] text-neutral-500 mt-1">Resets in {usage.resetRequests}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {usage.limitTokens && usage.remainingTokens && (
+                    <div>
+                      <div className="flex justify-between text-xs text-neutral-300 mb-1">
+                        <span>Token bandwidth (TPM)</span>
+                        <span className="font-mono text-[#00ff41]">
+                          {Number(usage.limitTokens) - Number(usage.remainingTokens)} / {usage.limitTokens}
+                        </span>
+                      </div>
+                      <div className="w-full bg-neutral-800 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-[#00ff41] h-1.5 rounded-full"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.max(
+                                0,
+                                ((Number(usage.limitTokens) - Number(usage.remainingTokens)) /
+                                  Number(usage.limitTokens)) *
+                                  100
+                              )
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                      {usage.resetTokens && (
+                        <p className="text-[10px] text-neutral-500 mt-1">Resets in {usage.resetTokens}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Question & Solution Images Card */}
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 p-5 sm:p-7 shadow-sm">

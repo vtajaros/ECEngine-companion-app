@@ -14,7 +14,9 @@ import {
   Folder as FolderIcon,
   ArrowUpDown,
   Check,
+  Star,
 } from 'lucide-react'
+import { getFavoriteOverrides, isTopicFavorite, toggleTopicFavorite, FavoriteOverrides } from '../services/favorites.service'
 import { openDatabase, dbService, TopicWithCardCount, getPreviouslyImportedDbPath, Folder } from '../services/db.service'
 import { importDatabaseFile, UserCancelledError } from '../services/import.service'
 import { getSubjectBadgeClasses, getSubjectFilterClasses, SUBJECT_MAP } from '../lib/subjectColors'
@@ -134,6 +136,31 @@ export function TopicBrowser({
   const [error, setError] = useState<string | null>(null)
   const [localSearchQuery, setLocalSearchQuery] = useState<string>('')
   const [localSelectedSubject, setLocalSelectedSubject] = useState<string>('ALL')
+  const [favoriteOverrides, setFavoriteOverrides] = useState<FavoriteOverrides>({
+    starred: new Set(),
+    unstarred: new Set(),
+  })
+  const [favoritesOnly, setFavoritesOnly] = useState<boolean>(false)
+
+  useEffect(() => {
+    getFavoriteOverrides().then(setFavoriteOverrides)
+  }, [])
+
+  const favoriteIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const t of topics) {
+      if (isTopicFavorite(t.id, Boolean(t.isFavorite), favoriteOverrides)) {
+        ids.add(t.id)
+      }
+    }
+    return ids
+  }, [topics, favoriteOverrides])
+
+  const handleToggleFavorite = async (e: React.MouseEvent, topic: TopicWithCardCount) => {
+    e.stopPropagation()
+    const updated = await toggleTopicFavorite(topic.id, Boolean(topic.isFavorite), favoriteOverrides)
+    setFavoriteOverrides(updated)
+  }
 
   const folders = controlledFolders ?? localFolders
   const formulaFolders = controlledFormulaFolders ?? localFormulaFolders
@@ -350,12 +377,16 @@ export function TopicBrowser({
   const filteredTopics = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     return folderFilteredTopics.filter((t) => {
+      // 3.5 Favorites Filtering
+      if (favoritesOnly && !favoriteIds.has(t.id)) {
+        return false
+      }
       const matchesSubject =
         selectedSubject === 'ALL' || (t.subject && t.subject.trim() === selectedSubject)
       const matchesQuery = !q || t.name.toLowerCase().includes(q)
       return matchesSubject && matchesQuery
     })
-  }, [folderFilteredTopics, selectedSubject, searchQuery])
+  }, [folderFilteredTopics, selectedSubject, searchQuery, favoritesOnly, favoriteIds])
 
   // Final display order — sort mode chosen from the header sort menu. This
   // does not affect header/badge counts, which still read from
@@ -421,7 +452,7 @@ export function TopicBrowser({
             />
             <div>
               <h1 className="font-['Orbitron'] text-base font-bold tracking-wider text-white sm:text-lg">
-                <span className="text-[#00ff41]">ECE</span>ngine Companion
+                <span className="text-[#00ff41]">ECE</span>ngine
               </h1>
               <p className="text-[11px] text-neutral-400">
                 {isLoading
@@ -431,6 +462,18 @@ export function TopicBrowser({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFavoritesOnly((prev) => !prev)}
+              className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
+                favoritesOnly
+                  ? 'border-[#00ff41]/60 bg-[#00ff41]/20 text-[#00ff41] shadow-[0_0_16px_rgba(0,255,65,0.25)]'
+                  : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-neutral-200'
+              }`}
+              title="Favorites Only"
+            >
+              <Star size={15} className={favoritesOnly ? 'fill-[#00ff41]' : ''} />
+            </button>
             <button
               type="button"
               onClick={() => setIsFolderDrawerOpen(true)}
@@ -529,7 +572,7 @@ export function TopicBrowser({
         {/* Subject Filter Pills */}
         {availableSubjects.length > 1 && (
           <div className="mx-auto mt-2.5 max-w-5xl">
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            <div className="flex items-center justify-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
               {availableSubjects.map((sub) => {
                 const isActive = selectedSubject === sub
                 const colorClasses = getSubjectFilterClasses(sub, isActive)
@@ -540,7 +583,7 @@ export function TopicBrowser({
                     key={sub}
                     type="button"
                     onClick={() => setSelectedSubject(sub)}
-                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold uppercase tracking-wider transition-all active:scale-95 ${colorClasses} ${
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide transition-all active:scale-95 ${colorClasses} ${
                       !isActive
                         ? 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:bg-neutral-800/80 hover:text-neutral-200'
                         : sub === 'ALL'
@@ -549,7 +592,7 @@ export function TopicBrowser({
                     }`}
                   >
                     <span>{sub}</span>
-                    <span className="text-[10px] font-mono leading-none">
+                    <span className="text-[9.5px] font-mono leading-none opacity-80">
                       {count}
                     </span>
                   </button>
@@ -704,68 +747,94 @@ export function TopicBrowser({
 
                     {/* Bottom Row: Action Buttons — only shown in looksfam mode */}
                     {mode === 'looksfam' && (
-                      <div className="mt-3.5 flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-800/60">
+                      <div className="mt-3.5 flex items-center justify-between gap-2 pt-2.5 border-t border-neutral-800/60">
                         <button
                           type="button"
-                          onClick={() => {
-                            setLearnSettings({ ...DEFAULT_LEARN_SETTINGS })
-                            setLearnModalTopic(topic)
-                          }}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                          onClick={(e) => handleToggleFavorite(e, topic)}
+                          className={`p-1.5 rounded-md transition-all active:scale-90 ${
+                            favoriteIds.has(topic.id) ? 'text-[#00ff41]' : 'text-neutral-600 hover:text-neutral-400'
+                          }`}
+                          title="Toggle Favorite"
                         >
-                          <Play size={13} className="fill-current" />
-                          Learn
+                          <Star size={16} className={favoriteIds.has(topic.id) ? 'fill-[#00ff41]' : ''} />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTestSettings({ ...DEFAULT_TEST_SETTINGS })
-                            setTestModalTopic(topic)
-                          }}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
-                        >
-                          <ClipboardList size={13} />
-                          Test
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onScrollPositionChange?.(getScrollPos())
-                            onSelectTopic?.(topic, 'testpaper')
-                          }}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
-                        >
-                          <FileText size={13} />
-                          VIEW
-                        </button>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLearnSettings({ ...DEFAULT_LEARN_SETTINGS })
+                              setLearnModalTopic(topic)
+                            }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                          >
+                            <Play size={13} className="fill-current" />
+                            Learn
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTestSettings({ ...DEFAULT_TEST_SETTINGS })
+                              setTestModalTopic(topic)
+                            }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                          >
+                            <ClipboardList size={13} />
+                            Test
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onScrollPositionChange?.(getScrollPos())
+                              onSelectTopic?.(topic, 'testpaper')
+                            }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                          >
+                            <FileText size={13} />
+                            VIEW
+                          </button>
+                        </div>
                       </div>
                     )}
 
                     {/* Bottom Row: Action Buttons — shown in flashcards and formulas modes */}
                     {(mode === 'flashcards' || mode === 'formulas') && (
-                      <div className="mt-3.5 flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-800/60">
+                      <div className="mt-3.5 flex items-center justify-between gap-2 pt-2.5 border-t border-neutral-800/60">
                         <button
                           type="button"
-                          onClick={() => {
-                            setFlashcardSettings({ ...DEFAULT_FLASHCARD_SETTINGS })
-                            setFlashcardModalTopic(topic)
-                          }}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                          onClick={(e) => handleToggleFavorite(e, topic)}
+                          className={`p-1.5 rounded-md transition-all active:scale-90 ${
+                            favoriteIds.has(topic.id) ? 'text-[#00ff41]' : 'text-neutral-600 hover:text-neutral-400'
+                          }`}
+                          title="Toggle Favorite"
                         >
-                          <Play size={13} className="fill-current" />
-                          Learn
+                          <Star size={16} className={favoriteIds.has(topic.id) ? 'fill-[#00ff41]' : ''} />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onScrollPositionChange?.(getScrollPos())
-                            onSelectTopic?.(topic, 'testpaper')
-                          }}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
-                        >
-                          <FileText size={13} />
-                          VIEW
-                        </button>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFlashcardSettings({ ...DEFAULT_FLASHCARD_SETTINGS })
+                              setFlashcardModalTopic(topic)
+                            }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                          >
+                            <Play size={13} className="fill-current" />
+                            Learn
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onScrollPositionChange?.(getScrollPos())
+                              onSelectTopic?.(topic, 'testpaper')
+                            }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+                          >
+                            <FileText size={13} />
+                            VIEW
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>

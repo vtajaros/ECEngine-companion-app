@@ -35,6 +35,7 @@ function SessionFallback() {
 interface ActiveSession {
   topicId: string
   topicName?: string
+  topicDescription?: string
   mode: BrowserMode
   learnSettings?: LearnSettings
   testSettings?: TestSettings
@@ -206,6 +207,7 @@ function App() {
         <TestPaperView
           topicId={activeSession.topicId}
           title={activeSession.topicName}
+          description={activeSession.topicDescription}
           onExit={() => setActiveSession(null)}
         />
       </Suspense>
@@ -262,6 +264,7 @@ function App() {
           setActiveSession({
             topicId: topic.id,
             topicName: topic.name,
+            topicDescription: topic.description,
             mode,
           })
         } else if (mode === 'flashcards' || mode === 'formulas') {

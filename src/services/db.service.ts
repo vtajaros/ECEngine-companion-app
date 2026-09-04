@@ -139,6 +139,7 @@ const TopicWithCountRowSchema = z.object({
   order_index: z.number().nullable().optional(),
   card_count: z.number().nullable().optional(),
   types: z.string().nullable().optional(),
+  is_favorite: z.union([z.boolean(), z.number()]).nullable().optional(),
 })
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -217,6 +218,7 @@ function parseTopicRow(row: z.infer<typeof TopicWithCountRowSchema>): TopicWithC
     folderName: row.folder_name ?? null,
     folderId: row.folder_id ?? null,
     types: row.types || '',
+    isFavorite: Boolean(row.is_favorite),
   }
 }
 
@@ -251,8 +253,19 @@ export const dbService = {
    * Matches desktop query: GROUP BY t.id ORDER BY t.name
    */
   getTopicsWithCardCounts: async (): Promise<TopicWithCardCount[]> => {
+    // Defensively check if 'is_favorite' column exists on 'topics' table to remain backward-compatible
+    let isFavoriteColumnSelect = '0 as is_favorite'
+    try {
+      const columns = await executeQuery<{ name: string }>('PRAGMA table_info(topics);')
+      if (columns.some((col) => col.name === 'is_favorite')) {
+        isFavoriteColumnSelect = 't.is_favorite'
+      }
+    } catch {
+      // Fallback to 0 if pragma fails
+    }
+
     const sql = `
-      SELECT t.id, t.name, t.subject, t.description, t.created_at, t.tags, t.folder_name, t.folder_id, t.order_index,
+      SELECT t.id, t.name, t.subject, t.description, t.created_at, t.tags, t.folder_name, t.folder_id, t.order_index, ${isFavoriteColumnSelect},
              COUNT(c.id) as card_count,
              GROUP_CONCAT(DISTINCT c.type) as types
       FROM topics t LEFT JOIN cards c ON c.topic_id = t.id

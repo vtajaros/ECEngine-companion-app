@@ -1,4 +1,5 @@
 import { Preferences } from '@capacitor/preferences'
+import { CapacitorHttp, HttpResponse } from '@capacitor/core'
 import { GROQ_API_KEY_PREF, GROQ_API_URL, GROQ_MODEL } from '../config/app-config'
 
 export interface ExplainParams {
@@ -18,12 +19,107 @@ export class ExplainError extends Error {
   }
 }
 
-export async function getExplanation(params: ExplainParams): Promise<string> {
+function getHeader(headers: Record<string, string> | undefined, name: string): string | null {
+  if (!headers) return null
+  const target = name.toLowerCase()
+  for (const [key, val] of Object.entries(headers)) {
+    if (key.toLowerCase() === target && val !== undefined && val !== null) {
+      return String(val)
+    }
+  }
+  return null
+}
+
+async function callGroqChat(userPrompt: string): Promise<string> {
   const { value: apiKey } = await Preferences.get({ key: GROQ_API_KEY_PREF })
   if (!apiKey || apiKey.trim() === '') {
     throw new ExplainError('NO_KEY')
   }
 
+  let response: HttpResponse
+  try {
+    response = await CapacitorHttp.post({
+      url: GROQ_API_URL,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+      data: {
+        model: GROQ_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a professional ECE (Electronics and Communications Engineering) tutor helping Filipino students prepare for the PRC board exam. Be concise, accurate, and practical.',
+          },
+          {
+            role: 'user',
+            content: userPrompt,
+          },
+        ],
+      },
+      connectTimeout: 15000,
+      readTimeout: 15000,
+    })
+  } catch (err: unknown) {
+    if (err instanceof ExplainError) {
+      throw err
+    }
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.toLowerCase().includes('timeout') || message.toLowerCase().includes('timed out')) {
+      throw new ExplainError('TIMEOUT')
+    }
+    throw new ExplainError('NETWORK_ERROR', undefined, message)
+  }
+
+  // Cache rate-limit headers for display in Settings
+  try {
+    const limitRequests = getHeader(response.headers, 'x-ratelimit-limit-requests')
+    const remainingRequests = getHeader(response.headers, 'x-ratelimit-remaining-requests')
+    const resetRequests = getHeader(response.headers, 'x-ratelimit-reset-requests')
+    const limitTokens = getHeader(response.headers, 'x-ratelimit-limit-tokens')
+    const remainingTokens = getHeader(response.headers, 'x-ratelimit-remaining-tokens')
+    const resetTokens = getHeader(response.headers, 'x-ratelimit-reset-tokens')
+
+    if (limitRequests || limitTokens) {
+      const usage = {
+        limitRequests,
+        remainingRequests,
+        resetRequests,
+        limitTokens,
+        remainingTokens,
+        resetTokens,
+        fetchedAt: Date.now(),
+      }
+      await Preferences.set({ key: 'groqUsageSnapshot', value: JSON.stringify(usage) })
+    }
+  } catch {
+    // non-critical, ignore
+  }
+
+  if (response.status === 401) {
+    throw new ExplainError('INVALID_KEY')
+  }
+  if (response.status === 429) {
+    throw new ExplainError('RATE_LIMITED')
+  }
+  if (response.status < 200 || response.status >= 300) {
+    const errorText = typeof response.data === 'string'
+      ? response.data
+      : JSON.stringify(response.data)
+    throw new ExplainError('API_ERROR', response.status, errorText)
+  }
+
+  const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data
+  const content = data.choices?.[0]?.message?.content
+  if (!content || typeof content !== 'string' || content.trim() === '') {
+    throw new ExplainError('API_ERROR', 200, 'Empty response from model')
+  }
+
+  return content.trim()
+}
+
+export async function getExplanation(params: ExplainParams): Promise<string> {
   const { question, choices, correctAnswerIndex } = params
   const correctAnswerText = choices[correctAnswerIndex] ?? ''
   const correctAnswerLetter = String.fromCharCode(65 + correctAnswerIndex)
@@ -55,64 +151,7 @@ STRICT FORMATTING RULES:
    - Reluctance: $S = \\frac{l}{\\mu \\cdot A}$
    - APF: $APF = \\frac{n \\cdot \\frac{4}{3} \\pi r^3}{a^3}$`
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 15000)
-
-  try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey.trim()}`,
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a professional ECE (Electronics and Communications Engineering) tutor helping Filipino students prepare for the PRC board exam. Be concise, accurate, and practical.',
-          },
-          {
-            role: 'user',
-            content: userPrompt,
-          },
-        ],
-      }),
-      signal: controller.signal,
-    })
-
-    clearTimeout(timeoutId)
-
-    if (response.status === 401) {
-      throw new ExplainError('INVALID_KEY')
-    }
-    if (response.status === 429) {
-      throw new ExplainError('RATE_LIMITED')
-    }
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '')
-      throw new ExplainError('API_ERROR', response.status, errorText)
-    }
-
-    const data = await response.json()
-    const content = data.choices?.[0]?.message?.content
-    if (!content || typeof content !== 'string' || content.trim() === '') {
-      throw new ExplainError('API_ERROR', 200, 'Empty response from model')
-    }
-
-    return content.trim()
-  } catch (err: unknown) {
-    clearTimeout(timeoutId)
-    if (err instanceof ExplainError) {
-      throw err
-    }
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new ExplainError('TIMEOUT')
-    }
-    const message = err instanceof Error ? err.message : String(err)
-    throw new ExplainError('NETWORK_ERROR', undefined, message)
-  }
+  return callGroqChat(userPrompt)
 }
 
 export interface FlashcardExplainParams {
@@ -121,11 +160,6 @@ export interface FlashcardExplainParams {
 }
 
 export async function getFlashcardExplanation(params: FlashcardExplainParams): Promise<string> {
-  const { value: apiKey } = await Preferences.get({ key: GROQ_API_KEY_PREF })
-  if (!apiKey || apiKey.trim() === '') {
-    throw new ExplainError('NO_KEY')
-  }
-
   const { term, definition } = params
 
   const userPrompt = `FLASHCARD:
@@ -145,62 +179,5 @@ STRICT FORMATTING RULES:
 3. SEPARATION: Use exactly two newlines (\\n\\n) between sections.
 4. CONSTRAINTS: Max 150 words. Ensure formulas and variables render naturally in LaTeX.`
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 15000)
-
-  try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey.trim()}`,
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a professional ECE (Electronics and Communications Engineering) tutor helping Filipino students prepare for the PRC board exam. Be concise, accurate, and practical.',
-          },
-          {
-            role: 'user',
-            content: userPrompt,
-          },
-        ],
-      }),
-      signal: controller.signal,
-    })
-
-    clearTimeout(timeoutId)
-
-    if (response.status === 401) {
-      throw new ExplainError('INVALID_KEY')
-    }
-    if (response.status === 429) {
-      throw new ExplainError('RATE_LIMITED')
-    }
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '')
-      throw new ExplainError('API_ERROR', response.status, errorText)
-    }
-
-    const data = await response.json()
-    const content = data.choices?.[0]?.message?.content
-    if (!content || typeof content !== 'string' || content.trim() === '') {
-      throw new ExplainError('API_ERROR', 200, 'Empty response from model')
-    }
-
-    return content.trim()
-  } catch (err: unknown) {
-    clearTimeout(timeoutId)
-    if (err instanceof ExplainError) {
-      throw err
-    }
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new ExplainError('TIMEOUT')
-    }
-    const message = err instanceof Error ? err.message : String(err)
-    throw new ExplainError('NETWORK_ERROR', undefined, message)
-  }
+  return callGroqChat(userPrompt)
 }

@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { ArrowLeft, RefreshCw, CheckCircle2, AlertCircle, RotateCcw, Sparkles, Copy, Bookmark } from 'lucide-react'
 import { dbService } from '../services/db.service'
 import { bookmarkService } from '../services/bookmark.service'
 import { Card, MCQData } from '../types'
+import { renderMath, renderPlainText } from '../lib/latex'
 import { ExplanationPanel } from '../components/ExplanationPanel'
 import { resolveImageSrc } from '../services/image.service'
 import { ImageLightbox } from '../components/ImageLightbox'
@@ -164,6 +165,23 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
     : 0
   const isRetryPass = activeQueue.length < currentPartition.length
   const isCurrentCardBookmarked = currentCard ? bookmarkedIds.has(currentCard.id) : false
+
+  const questionHtml = useMemo(
+    () => (mcqData?.question ? renderMath(mcqData.question) : ''),
+    [mcqData]
+  )
+
+  const choicesHtml = useMemo(() => {
+    if (!mcqData?.choices) return []
+    return mcqData.choices.map((choice, idx) =>
+      (mcqData.choicesPlainText?.[idx] ? renderPlainText : renderMath)(choice)
+    )
+  }, [mcqData])
+
+  const explanationHtml = useMemo(
+    () => (mcqData?.explanation ? renderMath(mcqData.explanation) : ''),
+    [mcqData]
+  )
 
   const handleToggleBookmark = async () => {
     if (!currentCard) return
@@ -538,9 +556,10 @@ Please explain:
                     </span>
                   )}
                 </div>
-                <h2 className="text-base sm:text-lg font-medium text-neutral-100 leading-relaxed whitespace-pre-wrap">
-                  {mcqData.question}
-                </h2>
+                <h2
+                  className="text-base sm:text-lg font-medium text-neutral-100 leading-relaxed break-words"
+                  dangerouslySetInnerHTML={{ __html: questionHtml }}
+                />
 
                 {/* Inline Question Diagram */}
                 {questionImageSrc && (
@@ -562,7 +581,7 @@ Please explain:
 
               {/* Choices List */}
               <div className="flex flex-col gap-2.5">
-                {mcqData.choices.map((choice, idx) => {
+                {mcqData.choices.map((_, idx) => {
                   const letter = String.fromCharCode(65 + idx)
                   const isCorrect = idx === mcqData.answer
                   const isSelected = idx === selectedChoiceIndex
@@ -594,9 +613,10 @@ Please explain:
                       <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border font-mono text-xs font-bold leading-none ${badgeStyle}`}>
                         {letter}
                       </span>
-                      <span className="text-sm sm:text-base leading-snug break-words flex-1 pt-0.5">
-                        {choice}
-                      </span>
+                      <span
+                        className="text-sm sm:text-base leading-snug break-words flex-1 pt-0.5"
+                        dangerouslySetInnerHTML={{ __html: choicesHtml[idx] }}
+                      />
                     </button>
                   )
                 })}
@@ -626,9 +646,10 @@ Please explain:
                     <span>Solution</span>
                   </div>
                   {mcqData.explanation && mcqData.explanation.trim() !== '' && (
-                    <p className="text-xs sm:text-sm text-neutral-300 leading-relaxed whitespace-pre-wrap">
-                      {mcqData.explanation}
-                    </p>
+                    <div
+                      className="text-xs sm:text-sm text-neutral-300 leading-relaxed break-words"
+                      dangerouslySetInnerHTML={{ __html: explanationHtml }}
+                    />
                   )}
                   {solutionImageSrc && (
                     <div
@@ -764,12 +785,20 @@ Please explain:
                           </button>
                         </div>
                       </div>
-                      <p className="text-xs sm:text-sm text-neutral-200 font-medium mb-2 leading-relaxed">
-                        {mcq.question}
-                      </p>
+                      <div
+                        className="text-xs sm:text-sm text-neutral-200 font-medium mb-2 leading-relaxed break-words"
+                        dangerouslySetInnerHTML={{ __html: renderMath(mcq.question) }}
+                      />
                       <div className="flex items-start gap-1.5 text-xs text-[#00ff41] font-mono">
                         <span className="font-bold">✓</span>
-                        <span className="break-words">{correctAnswerText}</span>
+                        <span
+                          className="break-words font-sans"
+                          dangerouslySetInnerHTML={{
+                            __html: mcq.choicesPlainText?.[mcq.answer]
+                              ? renderPlainText(correctAnswerText)
+                              : renderMath(correctAnswerText),
+                          }}
+                        />
                       </div>
 
                       {/* AI Explanation Panel */}
@@ -868,12 +897,20 @@ Please explain:
                           </button>
                         </div>
                       </div>
-                      <p className="text-xs sm:text-sm text-neutral-200 font-medium mb-2 leading-relaxed">
-                        {mcq.question}
-                      </p>
+                      <div
+                        className="text-xs sm:text-sm text-neutral-200 font-medium mb-2 leading-relaxed break-words"
+                        dangerouslySetInnerHTML={{ __html: renderMath(mcq.question) }}
+                      />
                       <div className="flex items-start gap-1.5 text-xs text-[#00ff41] font-mono">
                         <span className="font-bold">✓</span>
-                        <span className="break-words">{correctAnswerText}</span>
+                        <span
+                          className="break-words font-sans"
+                          dangerouslySetInnerHTML={{
+                            __html: mcq.choicesPlainText?.[mcq.answer]
+                              ? renderPlainText(correctAnswerText)
+                              : renderMath(correctAnswerText),
+                          }}
+                        />
                       </div>
 
                       {/* AI Explanation Panel */}

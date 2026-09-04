@@ -91,6 +91,7 @@ export interface TestPaperViewProps {
   cards?: Card[]
   topicId?: string
   title?: string
+  description?: string
   onExit: () => void
 }
 
@@ -744,9 +745,12 @@ export function TestPaperView({
   cards: initialCards,
   topicId,
   title = 'Test Paper',
+  description: propDescription,
   onExit,
 }: TestPaperViewProps) {
   const [loadedCards, setLoadedCards] = useState<Card[]>([])
+  const [fetchedDescription, setFetchedDescription] = useState<string | undefined>(undefined)
+  const description = propDescription ?? fetchedDescription
   const [loading, setLoading] = useState(!initialCards && !!topicId)
   const [layout, setLayout] = useState<LayoutMode>('glossary')
   const [boldSide, setBoldSide] = useState<BoldSide>('term')
@@ -784,21 +788,40 @@ export function TestPaperView({
     }
   }, [onExit])
 
-  // Load cards if not provided via props
+  // Load cards and description if not provided via props
   useEffect(() => {
     if (initialCards || !topicId) return
 
+    let isMounted = true
     dbService
       .getCardsWithProgress(topicId)
       .then((res) => {
-        setLoadedCards(res)
-        setLoading(false)
+        if (isMounted) {
+          setLoadedCards(res)
+          setLoading(false)
+        }
       })
       .catch((err) => {
         console.error('[TestPaperView] Failed to load cards:', err)
-        setLoading(false)
+        if (isMounted) setLoading(false)
       })
-  }, [initialCards, topicId])
+
+    if (!propDescription) {
+      dbService
+        .getTopicsWithCardCounts()
+        .then((topics) => {
+          const match = topics.find((t) => t.id === topicId)
+          if (isMounted && match?.description) {
+            setFetchedDescription(match.description)
+          }
+        })
+        .catch(() => {})
+    }
+
+    return () => {
+      isMounted = false
+    }
+  }, [initialCards, topicId, propDescription])
 
   const cards = initialCards ?? loadedCards
 
@@ -1018,6 +1041,14 @@ export function TestPaperView({
               >
                 {title}
               </h1>
+              {description && (
+                <p
+                  style={{ color: 'var(--pt-text-secondary)' }}
+                  className="text-[11px] italic mt-1 mb-2 max-w-xl mx-auto leading-relaxed"
+                >
+                  {description}
+                </p>
+              )}
               <hr style={{ border: 'none', borderTop: '2px solid var(--pt-rule)', margin: '0' }} />
             </div>
 

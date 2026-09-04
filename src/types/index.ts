@@ -88,4 +88,5 @@ export interface Topic {
   orderIndex: number
   createdAt?: number
   tags?: string[]
+  isFavorite?: boolean
 }
