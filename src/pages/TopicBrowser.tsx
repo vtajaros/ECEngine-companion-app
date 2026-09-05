@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, memo } from 'react'
+import { useState, useEffect, useMemo, useRef, memo, useCallback, startTransition } from 'react'
 import {
   Search,
   X,
@@ -298,6 +298,176 @@ const HighlightText = memo(function HighlightText({
   )
 })
 
+const TOPICS_BATCH_SIZE = 24
+
+interface TopicCardProps {
+  topic: TopicWithCardCount
+  mode: BrowserMode
+  searchQuery: string
+  isFavorite: boolean
+  onToggleFavorite: (e: React.MouseEvent, topic: TopicWithCardCount) => void
+  onOpenLearn: (topic: TopicWithCardCount) => void
+  onOpenTest: (topic: TopicWithCardCount) => void
+  onOpenFlashcard: (topic: TopicWithCardCount) => void
+  onView: (topic: TopicWithCardCount) => void
+}
+
+const TopicCard = memo(function TopicCard({
+  topic,
+  mode,
+  searchQuery,
+  isFavorite,
+  onToggleFavorite,
+  onOpenLearn,
+  onOpenTest,
+  onOpenFlashcard,
+  onView,
+}: TopicCardProps) {
+  const parsedTypes = useMemo(() => {
+    return topic.types
+      ? topic.types
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : []
+  }, [topic.types])
+
+  const badgeClasses = getSubjectBadgeClasses(topic.subject || 'ALL')
+
+  return (
+    <div className="group relative flex flex-col justify-between rounded-xl border border-neutral-800 bg-neutral-900/80 p-4 transition-all duration-200 hover:border-neutral-700 hover:bg-neutral-900 shadow-sm">
+      {/* Top Section: Topic Name & Stats */}
+      <div>
+        {/* Row 1: Topic Name (Left) + Subject Badge (Right) */}
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-base font-semibold leading-snug tracking-tight text-neutral-100 uppercase group-hover:text-[#00ff41] transition-colors line-clamp-2 flex-1 min-w-0">
+            <HighlightText text={topic.name} query={searchQuery} />
+          </h2>
+          <span
+            className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border shrink-0 ${badgeClasses}`}
+          >
+            {topic.subject || 'OTHER'}
+          </span>
+        </div>
+
+        {/* Row 2: Type & Tag Chips (Left) + Card Count (Right) */}
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            {parsedTypes.map((type) => (
+              <span
+                key={type}
+                className="rounded bg-neutral-950 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-neutral-300 border border-neutral-800"
+              >
+                {formatTypeChip(type)}
+              </span>
+            ))}
+
+            {/* Render custom tags if available (capped at 2 for mobile compactness) */}
+            {topic.tags &&
+              topic.tags.slice(0, 2).map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded bg-neutral-950 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-neutral-300 border border-neutral-800"
+                >
+                  {tag}
+                </span>
+              ))}
+          </div>
+
+          <span className="text-[11px] font-mono font-medium text-neutral-400 bg-neutral-950/60 px-2 py-0.5 rounded border border-neutral-800 shrink-0 ml-auto">
+            {topic.cardCount} {topic.cardCount === 1 ? 'item' : 'items'}
+          </span>
+        </div>
+
+        {/* Description if present */}
+        {topic.description && topic.description.trim() !== '' && (
+          <p className={`mt-1.5 text-xs text-neutral-400 leading-relaxed ${searchQuery ? 'line-clamp-3' : 'line-clamp-2'}`}>
+            <HighlightText text={topic.description} query={searchQuery} />
+          </p>
+        )}
+      </div>
+
+      {/* Bottom Row: Action Buttons — only shown in looksfam mode */}
+      {mode === 'looksfam' && (
+        <div className="mt-3.5 flex items-center justify-between gap-2 pt-2.5 border-t border-neutral-800/60">
+          <button
+            type="button"
+            onClick={(e) => onToggleFavorite(e, topic)}
+            className={`p-1.5 rounded-md transition-all active:scale-90 ${
+              isFavorite ? 'text-[#00ff41]' : 'text-neutral-600 hover:text-neutral-400'
+            }`}
+            title="Toggle Favorite"
+          >
+            <Star size={16} className={isFavorite ? 'fill-[#00ff41]' : ''} />
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onOpenLearn(topic)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+            >
+              <Play size={13} className="fill-current" />
+              Learn
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenTest(topic)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+            >
+              <ClipboardList size={13} />
+              Test
+            </button>
+            <button
+              type="button"
+              onClick={() => onView(topic)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+            >
+              <FileText size={13} />
+              VIEW
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Row: Action Buttons — shown in flashcards and formulas modes */}
+      {(mode === 'flashcards' || mode === 'formulas') && (
+        <div className="mt-3.5 flex items-center justify-between gap-2 pt-2.5 border-t border-neutral-800/60">
+          <button
+            type="button"
+            onClick={(e) => onToggleFavorite(e, topic)}
+            className={`p-1.5 rounded-md transition-all active:scale-90 ${
+              isFavorite ? 'text-[#00ff41]' : 'text-neutral-600 hover:text-neutral-400'
+            }`}
+            title="Toggle Favorite"
+          >
+            <Star size={16} className={isFavorite ? 'fill-[#00ff41]' : ''} />
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onOpenFlashcard(topic)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+            >
+              <Play size={13} className="fill-current" />
+              Learn
+            </button>
+            <button
+              type="button"
+              onClick={() => onView(topic)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
+            >
+              <FileText size={13} />
+              VIEW
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+})
+
 export interface TopicBrowserProps {
   folders?: Folder[]
   formulaFolders?: Folder[]
@@ -370,11 +540,11 @@ export function TopicBrowser({
     return ids
   }, [topics, favoriteOverrides])
 
-  const handleToggleFavorite = async (e: React.MouseEvent, topic: TopicWithCardCount) => {
+  const handleToggleFavorite = useCallback(async (e: React.MouseEvent, topic: TopicWithCardCount) => {
     e.stopPropagation()
     const updated = await toggleTopicFavorite(topic.id, Boolean(topic.isFavorite), favoriteOverrides)
     setFavoriteOverrides(updated)
-  }
+  }, [favoriteOverrides])
 
   const folders = controlledFolders ?? localFolders
   const formulaFolders = controlledFormulaFolders ?? localFormulaFolders
@@ -714,6 +884,73 @@ export function TopicBrowser({
     onSelectTopic(topic, targetMode, undefined, undefined, settings)
   }
 
+  const handleOpenLearn = useCallback((topic: TopicWithCardCount) => {
+    setLearnSettings({ ...DEFAULT_LEARN_SETTINGS })
+    setLearnModalTopic(topic)
+  }, [])
+
+  const handleOpenTest = useCallback((topic: TopicWithCardCount) => {
+    setTestSettings({ ...DEFAULT_TEST_SETTINGS })
+    setTestModalTopic(topic)
+  }, [])
+
+  const handleOpenFlashcard = useCallback((topic: TopicWithCardCount) => {
+    setFlashcardSettings({ ...DEFAULT_FLASHCARD_SETTINGS })
+    setFlashcardModalTopic(topic)
+  }, [])
+
+  const handleView = useCallback((topic: TopicWithCardCount) => {
+    onScrollPositionChange?.(getScrollPos())
+    onSelectTopic?.(topic, 'testpaper')
+  }, [onScrollPositionChange, onSelectTopic])
+
+  // Progressive batching: Render an initial small batch for instant UI switch,
+  // then append subsequent batches seamlessly as user scrolls.
+  const [visibleCount, setVisibleCount] = useState<number>(() => {
+    if (scrollPosition && scrollPosition > 0) {
+      return Math.max(TOPICS_BATCH_SIZE, Math.ceil((scrollPosition / 150) * 3) + TOPICS_BATCH_SIZE)
+    }
+    return TOPICS_BATCH_SIZE
+  })
+
+  // Reset visible card batch whenever filters or sorting change (render-phase state adjustment)
+  const filterKey = `${mode}|${searchQuery}|${selectedSubject}|${selectedFolderId}|${favoritesOnly}|${sortMode}`
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
+
+  if (prevFilterKey !== filterKey) {
+    setPrevFilterKey(filterKey)
+    setVisibleCount(TOPICS_BATCH_SIZE)
+  }
+
+  const displayedTopics = useMemo(() => {
+    return sortedTopics.slice(0, visibleCount)
+  }, [sortedTopics, visibleCount])
+
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((prev) => {
+            if (prev >= sortedTopics.length) return prev
+            return Math.min(prev + TOPICS_BATCH_SIZE, sortedTopics.length)
+          })
+        }
+      },
+      {
+        root: browserContainerRef.current,
+        rootMargin: '400px',
+      }
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [sortedTopics.length, displayedTopics.length])
+
   return (
     <div ref={browserContainerRef} className="h-full flex flex-col bg-neutral-950 text-neutral-50 overflow-y-auto">
       {/* Header */}
@@ -952,170 +1189,27 @@ export function TopicBrowser({
 
           {/* Topics Grid */}
           {!isLoading && !error && filteredTopics.length > 0 && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {sortedTopics.map((topic) => {
-                // Parse comma-separated types into distinct cleaned tags
-                const parsedTypes = topic.types
-                  ? topic.types
-                      .split(',')
-                      .map((t) => t.trim())
-                      .filter(Boolean)
-                  : []
-
-                const badgeClasses = getSubjectBadgeClasses(topic.subject || 'ALL')
-
-                return (
-                  <div
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {displayedTopics.map((topic) => (
+                  <TopicCard
                     key={topic.id}
-                    className="group relative flex flex-col justify-between rounded-xl border border-neutral-800 bg-neutral-900/80 p-4 transition-all duration-200 hover:border-neutral-700 hover:bg-neutral-900 shadow-sm"
-                  >
-                    {/* Top Section: Topic Name & Stats */}
-                    <div>
-                      {/* Row 1: Topic Name (Left) + Subject Badge (Right) */}
-                      <div className="flex items-start justify-between gap-3">
-                        <h2 className="text-base font-semibold leading-snug tracking-tight text-neutral-100 uppercase group-hover:text-[#00ff41] transition-colors line-clamp-2 flex-1 min-w-0">
-                          <HighlightText text={topic.name} query={searchQuery} />
-                        </h2>
-                        <span
-                          className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border shrink-0 ${badgeClasses}`}
-                        >
-                          {topic.subject || 'OTHER'}
-                        </span>
-                      </div>
-
-                      {/* Row 2: Type & Tag Chips (Left) + Card Count (Right) */}
-                      <div className="mt-1.5 flex items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                          {parsedTypes.map((type) => (
-                            <span
-                              key={type}
-                              className="rounded bg-neutral-950 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-neutral-300 border border-neutral-800"
-                            >
-                              {formatTypeChip(type)}
-                            </span>
-                          ))}
-
-                          {/* Render custom tags if available (capped at 2 for mobile compactness) */}
-                          {topic.tags &&
-                            topic.tags.slice(0, 2).map((tag) => (
-                              <span
-                                key={tag}
-                                className="rounded bg-neutral-950 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-neutral-300 border border-neutral-800"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                        </div>
-
-                        <span className="text-[11px] font-mono font-medium text-neutral-400 bg-neutral-950/60 px-2 py-0.5 rounded border border-neutral-800 shrink-0 ml-auto">
-                          {topic.cardCount} {topic.cardCount === 1 ? 'item' : 'items'}
-                        </span>
-                      </div>
-
-                      {/* Description if present */}
-                      {topic.description && topic.description.trim() !== '' && (
-                        <p className={`mt-1.5 text-xs text-neutral-400 leading-relaxed ${searchQuery ? 'line-clamp-3' : 'line-clamp-2'}`}>
-                          <HighlightText text={topic.description} query={searchQuery} />
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Bottom Row: Action Buttons — only shown in looksfam mode */}
-                    {mode === 'looksfam' && (
-                      <div className="mt-3.5 flex items-center justify-between gap-2 pt-2.5 border-t border-neutral-800/60">
-                        <button
-                          type="button"
-                          onClick={(e) => handleToggleFavorite(e, topic)}
-                          className={`p-1.5 rounded-md transition-all active:scale-90 ${
-                            favoriteIds.has(topic.id) ? 'text-[#00ff41]' : 'text-neutral-600 hover:text-neutral-400'
-                          }`}
-                          title="Toggle Favorite"
-                        >
-                          <Star size={16} className={favoriteIds.has(topic.id) ? 'fill-[#00ff41]' : ''} />
-                        </button>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setLearnSettings({ ...DEFAULT_LEARN_SETTINGS })
-                              setLearnModalTopic(topic)
-                            }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
-                          >
-                            <Play size={13} className="fill-current" />
-                            Learn
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTestSettings({ ...DEFAULT_TEST_SETTINGS })
-                              setTestModalTopic(topic)
-                            }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
-                          >
-                            <ClipboardList size={13} />
-                            Test
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onScrollPositionChange?.(getScrollPos())
-                              onSelectTopic?.(topic, 'testpaper')
-                            }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
-                          >
-                            <FileText size={13} />
-                            VIEW
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Bottom Row: Action Buttons — shown in flashcards and formulas modes */}
-                    {(mode === 'flashcards' || mode === 'formulas') && (
-                      <div className="mt-3.5 flex items-center justify-between gap-2 pt-2.5 border-t border-neutral-800/60">
-                        <button
-                          type="button"
-                          onClick={(e) => handleToggleFavorite(e, topic)}
-                          className={`p-1.5 rounded-md transition-all active:scale-90 ${
-                            favoriteIds.has(topic.id) ? 'text-[#00ff41]' : 'text-neutral-600 hover:text-neutral-400'
-                          }`}
-                          title="Toggle Favorite"
-                        >
-                          <Star size={16} className={favoriteIds.has(topic.id) ? 'fill-[#00ff41]' : ''} />
-                        </button>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFlashcardSettings({ ...DEFAULT_FLASHCARD_SETTINGS })
-                              setFlashcardModalTopic(topic)
-                            }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
-                          >
-                            <Play size={13} className="fill-current" />
-                            Learn
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onScrollPositionChange?.(getScrollPos())
-                              onSelectTopic?.(topic, 'testpaper')
-                            }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-bold uppercase tracking-wider text-neutral-100 hover:bg-neutral-800 hover:text-white hover:border-neutral-600 active:scale-95 transition-all"
-                          >
-                            <FileText size={13} />
-                            VIEW
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+                    topic={topic}
+                    mode={mode}
+                    searchQuery={searchQuery}
+                    isFavorite={favoriteIds.has(topic.id)}
+                    onToggleFavorite={handleToggleFavorite}
+                    onOpenLearn={handleOpenLearn}
+                    onOpenTest={handleOpenTest}
+                    onOpenFlashcard={handleOpenFlashcard}
+                    onView={handleView}
+                  />
+                ))}
+              </div>
+              {displayedTopics.length < sortedTopics.length && (
+                <div ref={sentinelRef} className="h-6 w-full pointer-events-none" />
+              )}
+            </>
           )}
         </div>
       </main>
@@ -1125,7 +1219,7 @@ export function TopicBrowser({
         <div className="mx-auto flex max-w-md items-center justify-around px-2 py-2">
           <button
             type="button"
-            onClick={() => setMode('flashcards')}
+            onClick={() => startTransition(() => setMode('flashcards'))}
             className={`flex flex-1 flex-col items-center gap-1 py-1 text-xs font-medium transition-all active:scale-95 ${
               mode === 'flashcards'
                 ? 'text-[#00ff41]'
@@ -1141,7 +1235,7 @@ export function TopicBrowser({
 
           <button
             type="button"
-            onClick={() => setMode('looksfam')}
+            onClick={() => startTransition(() => setMode('looksfam'))}
             className={`flex flex-1 flex-col items-center gap-1 py-1 text-xs font-medium transition-all active:scale-95 ${
               mode === 'looksfam'
                 ? 'text-[#00ff41]'
@@ -1157,7 +1251,7 @@ export function TopicBrowser({
 
           <button
             type="button"
-            onClick={() => setMode('formulas')}
+            onClick={() => startTransition(() => setMode('formulas'))}
             className={`flex flex-1 flex-col items-center gap-1 py-1 text-xs font-medium transition-all active:scale-95 ${
               mode === 'formulas'
                 ? 'text-[#00ff41]'

@@ -84,6 +84,7 @@ function App() {
         const [studyData, formulaData] = await Promise.all([
           dbService.getFolders('study'),
           dbService.getFolders('formula'),
+          dbService.getTopicsWithCardCounts(),
         ])
         if (!isCancelled) {
           setFolders(studyData)
@@ -159,124 +160,118 @@ function App() {
     testSettings?.randomSample,
   ])
 
-  if (showSettings) {
-    return (
-      <Suspense fallback={<SessionFallback />}>
-        <SettingsPage
-          onClose={() => setShowSettings(false)}
-          onDatabaseImported={() => {
-            setDbVersion((v) => v + 1)
-            setShowSettings(false)
+  return (
+    <div className="relative h-screen w-screen overflow-hidden bg-neutral-950">
+      <div className={`h-full w-full ${activeSession || showSettings ? 'hidden' : 'block'}`}>
+        <TopicBrowser
+          key={dbVersion}
+          folders={folders}
+          formulaFolders={formulaFolders}
+          selectedFolderId={selectedFolderId}
+          onSelectedFolderIdChange={setSelectedFolderId}
+          mode={browserMode}
+          onModeChange={setBrowserMode}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          selectedSubject={selectedSubject}
+          onSelectedSubjectChange={setSelectedSubject}
+          scrollPosition={scrollPosition}
+          onScrollPositionChange={setScrollPosition}
+          onOpenSettings={() => setShowSettings(true)}
+          onSelectTopic={(topic, mode, selectedLearnSettings, selectedTestSettings, selectedFlashcardSettings) => {
+            if (mode === 'looksfam') {
+              setActiveSession({
+                topicId: topic.id,
+                topicName: topic.name,
+                mode,
+                learnSettings: selectedLearnSettings ?? DEFAULT_LEARN_SETTINGS,
+              })
+            } else if (mode === 'test') {
+              setActiveSession({
+                topicId: topic.id,
+                topicName: topic.name,
+                mode,
+                testSettings: selectedTestSettings ?? DEFAULT_TEST_SETTINGS,
+              })
+            } else if (mode === 'testpaper') {
+              setActiveSession({
+                topicId: topic.id,
+                topicName: topic.name,
+                topicDescription: topic.description,
+                mode,
+              })
+            } else if (mode === 'flashcards' || mode === 'formulas') {
+              setActiveSession({
+                topicId: topic.id,
+                topicName: topic.name,
+                mode,
+                flashcardSettings: selectedFlashcardSettings ?? DEFAULT_FLASHCARD_SETTINGS,
+              })
+            }
           }}
         />
-      </Suspense>
-    )
-  }
+      </div>
 
-  if (activeSession && activeSession.mode === 'looksfam') {
-    return (
-      <Suspense fallback={<SessionFallback />}>
-        <LearnSession
-          topicId={activeSession.topicId}
-          topicName={activeSession.topicName}
-          onExit={() => setActiveSession(null)}
-          onOpenSettings={() => setShowSettings(true)}
-          learnSettings={pipelineSettings}
-          ttsEnabled={activeSession.learnSettings?.ttsEnabled}
-        />
-      </Suspense>
-    )
-  }
+      {showSettings && (
+        <Suspense fallback={<SessionFallback />}>
+          <SettingsPage
+            onClose={() => setShowSettings(false)}
+            onDatabaseImported={() => {
+              setDbVersion((v) => v + 1)
+              setShowSettings(false)
+            }}
+          />
+        </Suspense>
+      )}
 
-  if (activeSession && activeSession.mode === 'test') {
-    return (
-      <Suspense fallback={<SessionFallback />}>
-        <TestMode
-          cards={testCards}
-          title={activeSession.topicName}
-          settings={memoizedTestSettings ?? DEFAULT_TEST_SETTINGS}
-          onExit={() => setActiveSession(null)}
-        />
-      </Suspense>
-    )
-  }
+      {activeSession && activeSession.mode === 'looksfam' && (
+        <Suspense fallback={<SessionFallback />}>
+          <LearnSession
+            topicId={activeSession.topicId}
+            topicName={activeSession.topicName}
+            onExit={() => setActiveSession(null)}
+            onOpenSettings={() => setShowSettings(true)}
+            learnSettings={pipelineSettings}
+            ttsEnabled={activeSession.learnSettings?.ttsEnabled}
+          />
+        </Suspense>
+      )}
 
-  if (activeSession && activeSession.mode === 'testpaper') {
-    return (
-      <Suspense fallback={<SessionFallback />}>
-        <TestPaperView
-          topicId={activeSession.topicId}
-          title={activeSession.topicName}
-          description={activeSession.topicDescription}
-          onExit={() => setActiveSession(null)}
-        />
-      </Suspense>
-    )
-  }
+      {activeSession && activeSession.mode === 'test' && (
+        <Suspense fallback={<SessionFallback />}>
+          <TestMode
+            cards={testCards}
+            title={activeSession.topicName}
+            settings={memoizedTestSettings ?? DEFAULT_TEST_SETTINGS}
+            onExit={() => setActiveSession(null)}
+          />
+        </Suspense>
+      )}
 
-  if (activeSession && (activeSession.mode === 'flashcards' || activeSession.mode === 'formulas')) {
-    return (
-      <Suspense fallback={<SessionFallback />}>
-        <FlashcardSession
-          topicId={activeSession.topicId}
-          topicName={activeSession.topicName}
-          onExit={() => setActiveSession(null)}
-          onOpenSettings={() => setShowSettings(true)}
-          initialSettings={activeSession.flashcardSettings}
-          cardType={activeSession.mode === 'formulas' ? 'formula' : 'flashcard'}
-        />
-      </Suspense>
-    )
-  }
+      {activeSession && activeSession.mode === 'testpaper' && (
+        <Suspense fallback={<SessionFallback />}>
+          <TestPaperView
+            topicId={activeSession.topicId}
+            title={activeSession.topicName}
+            description={activeSession.topicDescription}
+            onExit={() => setActiveSession(null)}
+          />
+        </Suspense>
+      )}
 
-  return (
-    <TopicBrowser
-      key={dbVersion}
-      folders={folders}
-      formulaFolders={formulaFolders}
-      selectedFolderId={selectedFolderId}
-      onSelectedFolderIdChange={setSelectedFolderId}
-      mode={browserMode}
-      onModeChange={setBrowserMode}
-      searchQuery={searchQuery}
-      onSearchQueryChange={setSearchQuery}
-      selectedSubject={selectedSubject}
-      onSelectedSubjectChange={setSelectedSubject}
-      scrollPosition={scrollPosition}
-      onScrollPositionChange={setScrollPosition}
-      onOpenSettings={() => setShowSettings(true)}
-      onSelectTopic={(topic, mode, selectedLearnSettings, selectedTestSettings, selectedFlashcardSettings) => {
-        if (mode === 'looksfam') {
-          setActiveSession({
-            topicId: topic.id,
-            topicName: topic.name,
-            mode,
-            learnSettings: selectedLearnSettings ?? DEFAULT_LEARN_SETTINGS,
-          })
-        } else if (mode === 'test') {
-          setActiveSession({
-            topicId: topic.id,
-            topicName: topic.name,
-            mode,
-            testSettings: selectedTestSettings ?? DEFAULT_TEST_SETTINGS,
-          })
-        } else if (mode === 'testpaper') {
-          setActiveSession({
-            topicId: topic.id,
-            topicName: topic.name,
-            topicDescription: topic.description,
-            mode,
-          })
-        } else if (mode === 'flashcards' || mode === 'formulas') {
-          setActiveSession({
-            topicId: topic.id,
-            topicName: topic.name,
-            mode,
-            flashcardSettings: selectedFlashcardSettings ?? DEFAULT_FLASHCARD_SETTINGS,
-          })
-        }
-      }}
-    />
+      {activeSession && (activeSession.mode === 'flashcards' || activeSession.mode === 'formulas') && (
+        <Suspense fallback={<SessionFallback />}>
+          <FlashcardSession
+            topicId={activeSession.topicId}
+            topicName={activeSession.topicName}
+            onExit={() => setActiveSession(null)}
+            onOpenSettings={() => setShowSettings(true)}
+            initialSettings={activeSession.flashcardSettings}
+            cardType={activeSession.mode === 'formulas' ? 'formula' : 'flashcard'}
+          />
+        </Suspense>
+      )}
+    </div>
   )
 }
 

@@ -9,6 +9,15 @@ import { DB_PRIVATE_FILENAME } from '../config/app-config'
 const sqlite = new SQLiteConnection(CapacitorSQLite)
 let db: SQLiteDBConnection | null = null
 let currentDbPath: string | null = null
+let cachedTopicsWithCardCounts: TopicWithCardCount[] | null = null
+
+/**
+ * Invalidates the in-memory cache for topics with card counts.
+ */
+export function invalidateTopicsCache(): void {
+  cachedTopicsWithCardCounts = null
+}
+
 
 /**
  * Checks if a previously imported database exists in private storage and returns
@@ -33,6 +42,8 @@ export async function getPreviouslyImportedDbPath(): Promise<string | null> {
 export async function openDatabase(filePath: string): Promise<void> {
   if (db) {
     await closeDatabase()
+  } else {
+    invalidateTopicsCache()
   }
 
   // Non-conformed database paths (containing slashes) are opened via createNCConnection
@@ -74,6 +85,7 @@ export async function closeDatabase(): Promise<void> {
   } finally {
     db = null
     currentDbPath = null
+    invalidateTopicsCache()
   }
 }
 
@@ -252,7 +264,11 @@ export const dbService = {
    * Fetch all topics joined with their card counts and card types list.
    * Matches desktop query: GROUP BY t.id ORDER BY t.name
    */
-  getTopicsWithCardCounts: async (): Promise<TopicWithCardCount[]> => {
+  getTopicsWithCardCounts: async (forceRefresh = false): Promise<TopicWithCardCount[]> => {
+    if (!forceRefresh && cachedTopicsWithCardCounts) {
+      return cachedTopicsWithCardCounts
+    }
+
     // Defensively check if 'is_favorite' column exists on 'topics' table to remain backward-compatible
     let isFavoriteColumnSelect = '0 as is_favorite'
     try {
@@ -272,7 +288,9 @@ export const dbService = {
       GROUP BY t.id ORDER BY t.name
     `
     const rows = await executeQuery(sql)
-    return z.array(TopicWithCountRowSchema).parse(rows).map(parseTopicRow)
+    const parsed = z.array(TopicWithCountRowSchema).parse(rows).map(parseTopicRow)
+    cachedTopicsWithCardCounts = parsed
+    return parsed
   },
 
   /**
