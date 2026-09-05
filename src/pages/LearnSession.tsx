@@ -89,7 +89,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
 
   // Exit confirmation modal state
   const [showExitConfirm, setShowExitConfirm] = useState(false)
-  const isActiveStudyState = viewState === 'question' || viewState === 'feedback'
+  const isActiveStudyState = viewState === 'question' || viewState === 'feedback' || viewState === 'round-complete'
   const isActiveStudyStateRef = useRef(isActiveStudyState)
 
   useEffect(() => {
@@ -472,7 +472,13 @@ Please explain:
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 px-4 py-6 sm:px-6 flex flex-col justify-center">
+      <main
+        className={`flex-1 px-4 sm:px-6 flex flex-col ${
+          viewState === 'round-complete' || viewState === 'set-complete'
+            ? 'justify-start pt-2 pb-4'
+            : 'justify-center py-6'
+        }`}
+      >
         <div className="mx-auto max-w-3xl w-full">
           {/* Loading State */}
           {isLoading && (
@@ -726,24 +732,24 @@ Please explain:
 
           {/* Round Complete State */}
           {viewState === 'round-complete' && (
-            <div className="flex flex-col rounded-2xl border border-neutral-800 bg-neutral-900/80 overflow-hidden shadow-sm my-4">
-              {/* Header Banner */}
-              <div className="p-6 text-center border-b border-neutral-800 bg-neutral-950/40">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/20">
-                  <CheckCircle2 size={26} />
+            <div className="flex flex-col rounded-2xl border border-neutral-800 bg-neutral-900/80 overflow-hidden shadow-sm my-1 sm:my-2">
+              {/* Header Banner - Compact height */}
+              <div className="py-3.5 px-4 text-center border-b border-neutral-800 bg-neutral-950/40">
+                <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/20 shadow-[0_0_12px_rgba(0,255,65,0.15)]">
+                  <CheckCircle2 size={18} />
                 </div>
-                <h2 className="text-xl font-bold tracking-tight text-neutral-100 uppercase">
+                <h2 className="text-base sm:text-lg font-bold tracking-tight text-neutral-100 uppercase">
                   Round Complete
                 </h2>
-                <div className="mt-2.5 inline-block bg-neutral-950 border border-neutral-800 px-3.5 py-1 rounded-lg">
-                  <span className="text-xs font-mono font-semibold text-[#00ff41]">
+                <div className="mt-1 inline-block bg-neutral-950 border border-neutral-800 px-2.5 py-0.5 rounded-md">
+                  <span className="text-[11px] sm:text-xs font-mono font-semibold text-[#00ff41]">
                     {partitionFlawlessCount} / {currentPartition.length} flawless answers
                   </span>
                 </div>
               </div>
 
               {/* Question Review List for the Round */}
-              <div className="p-4 sm:p-6 flex flex-col gap-2.5 max-h-[50vh] overflow-y-auto">
+              <div className="p-3 sm:p-4 flex flex-col gap-2 max-h-[34vh] sm:max-h-[42vh] overflow-y-auto">
                 {currentPartition.map((c, idx) => {
                   const mcq = c.data as MCQData
                   const stat = cardStats[c.id]
@@ -817,18 +823,18 @@ Please explain:
               </div>
 
               {/* Action Buttons */}
-              <div className="p-4 border-t border-neutral-800 bg-neutral-950/40 flex flex-col sm:flex-row gap-3">
+              <div className="p-3 sm:p-4 border-t border-neutral-800 bg-neutral-950/40 flex flex-col sm:flex-row gap-2.5">
                 <button
                   type="button"
                   onClick={handleStartNextRound}
-                  className="flex-1 rounded-xl bg-[#00ff41] py-3 text-xs font-bold uppercase tracking-wider text-neutral-950 hover:bg-[#00ff41]/90 active:scale-95 shadow-[0_0_15px_rgba(0,255,65,0.25)] transition-all"
+                  className="flex-1 rounded-xl bg-[#00ff41] py-2.5 sm:py-3 text-xs font-bold uppercase tracking-wider text-neutral-950 hover:bg-[#00ff41]/90 active:scale-95 shadow-[0_0_15px_rgba(0,255,65,0.25)] transition-all"
                 >
                   Continue Round {currentPartitionIndex + 2}
                 </button>
                 <button
                   type="button"
-                  onClick={onExit}
-                  className="rounded-xl border border-neutral-800 bg-neutral-900 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-neutral-300 hover:bg-neutral-800 active:scale-95 transition-all"
+                  onClick={() => setShowExitConfirm(true)}
+                  className="rounded-xl border border-neutral-800 bg-neutral-900 px-5 py-2.5 sm:py-3 text-xs font-semibold uppercase tracking-wider text-neutral-300 hover:bg-neutral-800 active:scale-95 transition-all"
                 >
                   Exit
                 </button>
@@ -838,24 +844,24 @@ Please explain:
 
           {/* Set Complete State */}
           {viewState === 'set-complete' && (
-            <div className="flex flex-col rounded-2xl border border-neutral-800 bg-neutral-900/80 overflow-hidden shadow-sm my-4">
-              {/* Header Banner */}
-              <div className="p-6 text-center border-b border-neutral-800 bg-neutral-950/40">
-                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/20 shadow-[0_0_20px_rgba(0,255,65,0.2)]">
-                  <CheckCircle2 size={32} />
+            <div className="flex flex-col rounded-2xl border border-neutral-800 bg-neutral-900/80 overflow-hidden shadow-sm my-1 sm:my-2">
+              {/* Header Banner - Compact height */}
+              <div className="py-3.5 px-4 text-center border-b border-neutral-800 bg-neutral-950/40">
+                <div className="mx-auto mb-1.5 flex h-10 w-10 items-center justify-center rounded-full bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/20 shadow-[0_0_16px_rgba(0,255,65,0.2)]">
+                  <CheckCircle2 size={20} />
                 </div>
-                <h2 className="text-2xl font-bold tracking-tight text-neutral-100 uppercase">
+                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-neutral-100 uppercase">
                   Set Complete! 🎉
                 </h2>
-                <div className="mt-2.5 inline-block bg-neutral-950 border border-neutral-800 px-4 py-1.5 rounded-lg">
-                  <span className="text-sm font-mono font-bold text-[#00ff41]">
+                <div className="mt-1 inline-block bg-neutral-950 border border-neutral-800 px-3 py-0.5 rounded-md">
+                  <span className="text-xs sm:text-sm font-mono font-bold text-[#00ff41]">
                     {totalFlawlessCount} / {cards.length} flawless answers
                   </span>
                 </div>
               </div>
 
               {/* Question Review List for the Entire Set */}
-              <div className="p-4 sm:p-6 flex flex-col gap-2.5 max-h-[50vh] overflow-y-auto">
+              <div className="p-3 sm:p-4 flex flex-col gap-2 max-h-[34vh] sm:max-h-[42vh] overflow-y-auto">
                 {cards.map((c, idx) => {
                   const mcq = c.data as MCQData
                   const stat = cardStats[c.id]
@@ -929,11 +935,11 @@ Please explain:
               </div>
 
               {/* Action Buttons */}
-              <div className="p-4 border-t border-neutral-800 bg-neutral-950/40 flex flex-col sm:flex-row gap-3">
+              <div className="p-3 sm:p-4 border-t border-neutral-800 bg-neutral-950/40 flex flex-col sm:flex-row gap-2.5">
                 <button
                   type="button"
                   onClick={handleRestartSet}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#00ff41] py-3 text-xs font-bold uppercase tracking-wider text-neutral-950 hover:bg-[#00ff41]/90 active:scale-95 shadow-[0_0_15px_rgba(0,255,65,0.25)] transition-all"
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#00ff41] py-2.5 sm:py-3 text-xs font-bold uppercase tracking-wider text-neutral-950 hover:bg-[#00ff41]/90 active:scale-95 shadow-[0_0_15px_rgba(0,255,65,0.25)] transition-all"
                 >
                   <RotateCcw size={14} />
                   <span>Study Again</span>
@@ -941,7 +947,7 @@ Please explain:
                 <button
                   type="button"
                   onClick={onExit}
-                  className="rounded-xl border border-neutral-800 bg-neutral-900 px-6 py-3 text-xs font-semibold uppercase tracking-wider text-neutral-300 hover:bg-neutral-800 active:scale-95 transition-all"
+                  className="rounded-xl border border-neutral-800 bg-neutral-900 px-6 py-2.5 sm:py-3 text-xs font-semibold uppercase tracking-wider text-neutral-300 hover:bg-neutral-800 active:scale-95 transition-all"
                 >
                   Back to Topics
                 </button>

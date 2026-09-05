@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, memo } from 'react'
 import {
   Search,
   X,
@@ -83,6 +83,220 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: 'name-asc', label: 'Name A-Z' },
   { value: 'name-desc', label: 'Name Z-A' },
 ]
+
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function hasWholeWord(text: string, term: string): boolean {
+  if (!text || !term) return false
+  const escaped = escapeRegExp(term)
+  return new RegExp(`(?<=[^a-zA-Z0-9]|^)${escaped}(?=[^a-zA-Z0-9]|$)`, 'i').test(text)
+}
+
+function hasWordPrefix(text: string, term: string): boolean {
+  if (!text || !term) return false
+  const escaped = escapeRegExp(term)
+  return new RegExp(`(?<=[^a-zA-Z0-9]|^)${escaped}`, 'i').test(text)
+}
+
+/**
+ * Calculates a search relevance score for a topic against fullQuery and terms.
+ * Enforces word boundaries: will NOT match arbitrary substrings in the middle of words
+ * (e.g. 'ECT' will match 'ECT', 'ECTs', or '... for ECT exam', but NOT 'SECTION' or 'ELECTRONIC').
+ */
+function calculateTopicScore(
+  topic: TopicWithCardCount,
+  fullQuery: string,
+  terms: string[]
+): { score: number; isFullMatch: boolean; partialMatch: boolean } {
+  const name = topic.name || ''
+  const desc = topic.description || ''
+  const subject = topic.subject || ''
+  const tags = (topic.tags || []).join(' ')
+
+  const nameLower = name.toLowerCase()
+  const descLower = desc.toLowerCase()
+  const q = fullQuery.toLowerCase()
+
+  let score = 0
+  let isFullMatch = false
+  let partialMatch = false
+
+  // ─── 1. Exact & Phrase Matching at Word Boundaries ───────────
+  if (nameLower === q) {
+    score += 3000 // Exact name match is highest possible
+    isFullMatch = true
+  } else if (nameLower.startsWith(q)) {
+    score += 2000 // Name starts with entire query
+    isFullMatch = true
+  } else if (hasWholeWord(name, q)) {
+    score += 1500 // Full query appears as standalone whole word in name
+    isFullMatch = true
+  } else if (hasWordPrefix(name, q)) {
+    score += 1000 // A word in name starts with entire query
+    isFullMatch = true
+  }
+
+  // Exact & Phrase match in description (word-boundary only)
+  if (descLower === q) {
+    score += 2500 // Description is exact match
+    isFullMatch = true
+  } else if (descLower.startsWith(q)) {
+    score += 1600 // Description starts with entire query
+    isFullMatch = true
+  } else if (hasWholeWord(desc, q)) {
+    score += 1300 // Full query appears as whole word in description
+    isFullMatch = true
+  } else if (hasWordPrefix(desc, q)) {
+    score += 800 // A word in description starts with entire query
+    isFullMatch = true
+  }
+
+  // Subject and tags whole word / prefix match
+  if (hasWholeWord(subject, q)) {
+    score += 500
+    isFullMatch = true
+  } else if (hasWordPrefix(subject, q)) {
+    score += 300
+    isFullMatch = true
+  }
+
+  if (hasWholeWord(tags, q)) {
+    score += 400
+    isFullMatch = true
+  } else if (hasWordPrefix(tags, q)) {
+    score += 250
+    isFullMatch = true
+  }
+
+  // ─── 2. Multi-term Token Scoring (Word Boundaries Only) ─────
+  if (terms.length > 1) {
+    let termsMatchedCount = 0
+    let allInName = true
+    let allInDesc = true
+
+    for (const term of terms) {
+      let termMatchedInTopic = false
+
+      // Check name (word-boundary only)
+      if (hasWholeWord(name, term)) {
+        termMatchedInTopic = true
+        score += 200
+      } else if (hasWordPrefix(name, term)) {
+        termMatchedInTopic = true
+        score += 120
+      } else {
+        allInName = false
+      }
+
+      // Check description (word-boundary only)
+      if (hasWholeWord(desc, term)) {
+        termMatchedInTopic = true
+        score += 180
+      } else if (hasWordPrefix(desc, term)) {
+        termMatchedInTopic = true
+        score += 100
+      } else {
+        allInDesc = false
+      }
+
+      // Check subject & tags
+      if (!termMatchedInTopic && (hasWholeWord(subject, term) || hasWordPrefix(subject, term))) {
+        termMatchedInTopic = true
+        score += 60
+      }
+      if (!termMatchedInTopic && (hasWholeWord(tags, term) || hasWordPrefix(tags, term))) {
+        termMatchedInTopic = true
+        score += 50
+      }
+
+      if (termMatchedInTopic) {
+        termsMatchedCount++
+      }
+    }
+
+    if (termsMatchedCount === terms.length) {
+      isFullMatch = true
+      score += 700 // Heavy bonus for matching all query terms
+      if (allInName) score += 400 // All terms in title
+      if (allInDesc) score += 300 // All terms in description
+    } else if (termsMatchedCount > 0) {
+      partialMatch = true
+      score += termsMatchedCount * 80
+    }
+  } else if (terms.length === 1) {
+    const singleTerm = terms[0]
+    // For single term, must match at a word boundary
+    if (
+      hasWordPrefix(name, singleTerm) ||
+      hasWordPrefix(desc, singleTerm) ||
+      hasWordPrefix(subject, singleTerm) ||
+      hasWordPrefix(tags, singleTerm)
+    ) {
+      isFullMatch = true
+    }
+  }
+
+  // ─── 3. Specificity / Length Ratio Bonus ───────────────────
+  if (isFullMatch) {
+    if (nameLower.startsWith(q) || hasWholeWord(name, q)) {
+      score += Math.round((q.length / Math.max(name.length, 1)) * 120)
+    }
+    if (descLower.startsWith(q) || hasWholeWord(desc, q)) {
+      score += Math.round((q.length / Math.max(desc.length, 1)) * 80)
+    }
+  }
+
+  return { score, isFullMatch, partialMatch }
+}
+
+/**
+ * Highlights matching search words within text using the neon green theme.
+ * Only highlights matches starting at word boundaries so words like 'section' or 'electronic'
+ * are not falsely chopped up when searching for 'ect'.
+ */
+const HighlightText = memo(function HighlightText({
+  text,
+  query,
+}: {
+  text: string
+  query: string
+}) {
+  const q = query.trim()
+  if (!q || !text) return <>{text}</>
+
+  const terms = Array.from(new Set(q.split(/\s+/).filter(Boolean)))
+  if (terms.length === 0) return <>{text}</>
+
+  // Sort terms by length descending so longer sequences match first
+  terms.sort((a, b) => b.length - a.length)
+
+  // Ensure highlight only matches at word boundaries
+  const pattern = new RegExp(
+    `(?<=[^a-zA-Z0-9]|^)(${terms.map(escapeRegExp).join('|')})`,
+    'gi'
+  )
+  const parts = text.split(pattern)
+
+  return (
+    <>
+      {parts.map((part, i) => {
+        const isMatch = terms.some((t) => t.toLowerCase() === part.toLowerCase())
+        return isMatch ? (
+          <mark
+            key={i}
+            className="text-[#00ff41] bg-[#00ff41]/20 rounded px-0.5 not-italic font-semibold"
+          >
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      })}
+    </>
+  )
+})
 
 export interface TopicBrowserProps {
   folders?: Folder[]
@@ -373,26 +587,87 @@ export function TopicBrowser({
     }
   }, [isLoading, activeFolders, selectedFolderId, setSelectedFolderId])
 
-  // Filter topics by folder, subject and search query
-  const filteredTopics = useMemo(() => {
+  // Filter and score topics by folder, subject, favorites and search query (name & description)
+  const { filteredTopics, scoredMap } = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    return folderFilteredTopics.filter((t) => {
-      // 3.5 Favorites Filtering
+
+    // 1. Initial filter by subject and favorites
+    const baseTopics = folderFilteredTopics.filter((t) => {
       if (favoritesOnly && !favoriteIds.has(t.id)) {
         return false
       }
       const matchesSubject =
         selectedSubject === 'ALL' || (t.subject && t.subject.trim() === selectedSubject)
-      const matchesQuery = !q || t.name.toLowerCase().includes(q)
-      return matchesSubject && matchesQuery
+      return matchesSubject
     })
+
+    if (!q) {
+      return { filteredTopics: baseTopics, scoredMap: new Map<string, number>() }
+    }
+
+    const terms = q.split(/\s+/).filter((t) => t.length > 0)
+    const scoredList: {
+      topic: TopicWithCardCount
+      score: number
+      isFullMatch: boolean
+      partialMatch: boolean
+    }[] = []
+
+    for (const topic of baseTopics) {
+      const { score, isFullMatch, partialMatch } = calculateTopicScore(topic, q, terms)
+      if (isFullMatch || partialMatch) {
+        scoredList.push({ topic, score, isFullMatch, partialMatch })
+      }
+    }
+
+    // Prioritize topics that match all terms or have exact/phrase match
+    const hasFullMatches = scoredList.some((item) => item.isFullMatch)
+    const finalMatches = hasFullMatches
+      ? scoredList.filter((item) => item.isFullMatch)
+      : scoredList
+
+    const scoreMap = new Map<string, number>()
+    for (const item of finalMatches) {
+      scoreMap.set(item.topic.id, item.score)
+    }
+
+    return {
+      filteredTopics: finalMatches.map((item) => item.topic),
+      scoredMap: scoreMap,
+    }
   }, [folderFilteredTopics, selectedSubject, searchQuery, favoritesOnly, favoriteIds])
 
-  // Final display order — sort mode chosen from the header sort menu. This
-  // does not affect header/badge counts, which still read from
-  // filteredTopics — only the rendered grid order changes.
+  // Final display order — when searching, sort primarily by search relevance score descending!
+  // The user's chosen sortMode ('date-desc', 'name-asc', etc.) is used as a tie-breaker.
+  // When not searching, purely uses sortMode.
   const sortedTopics = useMemo(() => {
     const arr = [...filteredTopics]
+    const q = searchQuery.trim()
+
+    if (q) {
+      arr.sort((a, b) => {
+        const scoreA = scoredMap.get(a.id) ?? 0
+        const scoreB = scoredMap.get(b.id) ?? 0
+        if (scoreB !== scoreA) {
+          return scoreB - scoreA
+        }
+        // Tie-breaker using selected sort mode
+        switch (sortMode) {
+          case 'date-desc':
+            return (b.createdAt ?? 0) - (a.createdAt ?? 0)
+          case 'date-asc':
+            return (a.createdAt ?? 0) - (b.createdAt ?? 0)
+          case 'name-asc':
+            return a.name.localeCompare(b.name)
+          case 'name-desc':
+            return b.name.localeCompare(a.name)
+          default:
+            return 0
+        }
+      })
+      return arr
+    }
+
     switch (sortMode) {
       case 'date-desc':
         arr.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
@@ -408,7 +683,7 @@ export function TopicBrowser({
         break
     }
     return arr
-  }, [filteredTopics, sortMode])
+  }, [filteredTopics, scoredMap, searchQuery, sortMode])
 
 
   const handleLearnStart = () => {
@@ -554,7 +829,7 @@ export function TopicBrowser({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search topics by name..."
+              placeholder="Search topics by name, description..."
               className="w-full rounded-xl border border-neutral-800 bg-neutral-900/90 py-2 pl-9 pr-9 text-sm text-neutral-100 placeholder-neutral-500 outline-none transition-colors focus:border-[#00ff41] focus:ring-1 focus:ring-[#00ff41]"
             />
             {searchQuery && (
@@ -699,7 +974,7 @@ export function TopicBrowser({
                       {/* Row 1: Topic Name (Left) + Subject Badge (Right) */}
                       <div className="flex items-start justify-between gap-3">
                         <h2 className="text-base font-semibold leading-snug tracking-tight text-neutral-100 uppercase group-hover:text-[#00ff41] transition-colors line-clamp-2 flex-1 min-w-0">
-                          {topic.name}
+                          <HighlightText text={topic.name} query={searchQuery} />
                         </h2>
                         <span
                           className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border shrink-0 ${badgeClasses}`}
@@ -739,8 +1014,8 @@ export function TopicBrowser({
 
                       {/* Description if present */}
                       {topic.description && topic.description.trim() !== '' && (
-                        <p className="mt-1.5 text-xs text-neutral-400 leading-relaxed line-clamp-2">
-                          {topic.description}
+                        <p className={`mt-1.5 text-xs text-neutral-400 leading-relaxed ${searchQuery ? 'line-clamp-3' : 'line-clamp-2'}`}>
+                          <HighlightText text={topic.description} query={searchQuery} />
                         </p>
                       )}
                     </div>

@@ -315,7 +315,7 @@ Provide a thorough explanation covering ALL of the following:
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 px-4 py-6 sm:px-6 landscape:py-4 flex flex-col justify-center">
+      <main className={`flex-1 px-4 sm:px-6 landscape:py-4 flex flex-col ${isCompleted ? 'justify-start pt-2 pb-4' : 'justify-center py-6'}`}>
         <div className="mx-auto max-w-2xl landscape:max-w-4xl w-full">
           {/* Loading State */}
           {isLoading && (
@@ -489,27 +489,27 @@ Provide a thorough explanation covering ALL of the following:
 
           {/* Set Complete View */}
           {!isLoading && isCompleted && (
-            <div className="flex flex-col rounded-2xl border border-neutral-800 bg-neutral-900/80 overflow-hidden shadow-sm my-4">
-              <div className="p-6 text-center border-b border-neutral-800 bg-neutral-950/40">
-                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/20 shadow-[0_0_20px_rgba(0,255,65,0.2)]">
-                  <CheckCircle2 size={32} />
+            <div className="flex flex-col rounded-2xl border border-neutral-800 bg-neutral-900/80 overflow-hidden shadow-sm my-1 sm:my-2">
+              <div className="py-3.5 px-4 text-center border-b border-neutral-800 bg-neutral-950/40">
+                <div className="mx-auto mb-1.5 flex h-10 w-10 items-center justify-center rounded-full bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/20 shadow-[0_0_16px_rgba(0,255,65,0.2)]">
+                  <CheckCircle2 size={20} />
                 </div>
-                <h2 className="text-2xl font-bold tracking-tight text-neutral-100 uppercase">
+                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-neutral-100 uppercase">
                   Set Complete! 🎉
                 </h2>
-                <div className="mt-2.5 inline-block bg-neutral-950 border border-neutral-800 px-4 py-1.5 rounded-lg">
-                  <span className="text-sm font-mono font-bold text-[#00ff41]">
+                <div className="mt-1 inline-block bg-neutral-950 border border-neutral-800 px-3 py-0.5 rounded-md">
+                  <span className="text-xs sm:text-sm font-mono font-bold text-[#00ff41]">
                     {activeCards.length} {cardType === 'formula' ? 'formulas' : 'flashcards'} reviewed
                   </span>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="p-5 border-t border-neutral-800 bg-neutral-950/40 flex flex-col sm:flex-row gap-3">
+              <div className="p-3 sm:p-4 border-t border-neutral-800 bg-neutral-950/40 flex flex-col sm:flex-row gap-2.5">
                 <button
                   type="button"
                   onClick={handleRestart}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#00ff41] py-3 text-xs font-bold uppercase tracking-wider text-neutral-950 hover:bg-[#00ff41]/90 active:scale-95 shadow-[0_0_15px_rgba(0,255,65,0.25)] transition-all min-h-[52px] whitespace-nowrap"
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#00ff41] py-2.5 sm:py-3 text-xs font-bold uppercase tracking-wider text-neutral-950 hover:bg-[#00ff41]/90 active:scale-95 shadow-[0_0_15px_rgba(0,255,65,0.25)] transition-all min-h-[46px] whitespace-nowrap"
                 >
                   <RotateCcw size={14} />
                   <span>Study Again</span>
@@ -517,7 +517,7 @@ Provide a thorough explanation covering ALL of the following:
                 <button
                   type="button"
                   onClick={onExit}
-                  className="rounded-xl border border-neutral-800 bg-neutral-900 px-6 py-3 text-xs font-semibold uppercase tracking-wider text-neutral-300 hover:bg-neutral-800 active:scale-95 transition-all min-h-[52px] whitespace-nowrap"
+                  className="rounded-xl border border-neutral-800 bg-neutral-900 px-6 py-2.5 sm:py-3 text-xs font-semibold uppercase tracking-wider text-neutral-300 hover:bg-neutral-800 active:scale-95 transition-all min-h-[46px] whitespace-nowrap"
                 >
                   Back to Topics
                 </button>
