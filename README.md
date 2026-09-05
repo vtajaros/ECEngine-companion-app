@@ -18,12 +18,13 @@ Built with **React 19**, **TypeScript**, **Tailwind CSS**, and **Capacitor 8**.
 - **Formula Study Mode**: First-class formula deck review supporting LaTeX equations (`$$latex$$`), variable definitions (`$key$: value`), front diagrams (`imagePathFront`), and step-by-step solution derivations.
 - **Pinch-to-Zoom Gesture**: Native 2-finger touch scaling ($0.75\times$ to $3.0\times$) on card text, with auto-reset on flip/advance and double-tap reset.
 - **Landscape-Optimized Layout**: Wide horizontal presentation (`landscape:max-w-4xl`) with tailored font scaling and height adjustments for landscape studying.
-- **Text-to-Speech (TTS) Read Aloud**: Native Android voice synthesis reads terms and definitions on flip, with automatic LaTeX suppression during formula study.
+- **Zero-Latency Pipelined Text-to-Speech (TTS)**: Custom singleton streaming pipeline that plays Sentence 1 in under 200ms using native `QUEUE_FLUSH` while background-synthesizing subsequent sentences with `QUEUE_ADD`. Automatically suppresses raw LaTeX in formulas, preserves engineering decimals (`12.5 V`, `0.7 mA`) and technical abbreviations (`fig.`, `approx.`, `e.g.`), and cancels immediately on card flip, navigation, screen lock, or app backgrounding.
 - **Pre-Launch Settings Modal**: Context-aware modal to configure card shuffling, Term ↔ Definition (or Name ↔ Formula) swap, bookmark filtering, and TTS.
 - **AI Context & Explanations**: One-tap prompt generator (`Get Context`) with native Android clipboard integration for external LLMs (ChatGPT, Gemini, Claude), plus in-app AI explanation panels using your own API key.
 
 ### 📚 LooksFam / Learn Mode
 - **Multiple-Choice Question Drills**: Instant feedback and choice scrambling to eliminate positional memory bias.
+- **Pipelined Audio Read-Aloud**: Instant question narration with sentence streaming, math symbol normalization (`Ω` → "ohms", `μ` → "micro", `√` → "square root of"), and automatic silence on answer selection, navigation, or phone screen lock.
 - **Sound Effects**: Correct/wrong/round-complete audio feedback.
 - **Full Solution Breakdowns**: KaTeX-rendered mathematical derivations, step-by-step explanations, and interactive diagram lightboxes.
 - **Active Partition Queue**: Missed questions automatically requeue until 100% mastery is reached for the session.
@@ -35,6 +36,9 @@ Built with **React 19**, **TypeScript**, **Tailwind CSS**, and **Capacitor 8**.
 - **Test Paper View**: Continuous, printable-style document viewer supporting Table, Glossary/List, and Q&A layouts with Light, Sepia, and Dark themes — display-only (no export/print/share; see Design Philosophy below).
 
 ### 🗂️ Topic Browser & Subject Filtering
+- **Progressive Batch Rendering & Virtualization**: Progressive batching (24 cards per slice) via `IntersectionObserver` eliminating DOM freeze and layout lag across 160+ decks.
+- **In-Memory Query Caching**: SQLite deck counts and metadata cached in-memory with automatic invalidation on new database import.
+- **View Preservation**: Preserves Topic Browser DOM and scroll position across study sessions for instant (<50ms) zero-reloading navigation.
 Instant filtering across the 4 Philippine ECE Board Exam subject areas:
 - **MATH (Mathematics — 7 Topics)**:
   - 1.0 Differential Calculus
@@ -81,6 +85,7 @@ Supports MCQ, Flashcard, Formula, and Mixed deck types, with live per-subject de
 - **Unpacked Image Bundles**: Zip archive extraction and filesystem resolution for question, answer, and explanation diagrams, via `@capacitor/filesystem`.
 - **Native Android Clipboard**: `@capacitor/clipboard` with multi-tier fallbacks for reliable prompt copying across Android versions.
 - **Multi-Provider AI Settings**: Local storage of your own API key for Google Gemini, Anthropic Claude, OpenAI, or a custom OpenAI-compatible endpoint — used only for the optional AI Explain feature.
+- **Native Plugin Patching**: Managed via `patch-package` to persist native Android optimizations (such as TTS locale caching and promise-safe stop lifecycle handling) deterministically across builds.
 
 ---
 
@@ -147,9 +152,9 @@ review — reading, drilling, and testing — fast and pleasant on a phone.
 | **Animation & Icons** | [Framer Motion 11](https://www.framer.com/motion/), [Lucide React](https://lucide.dev/) |
 | **Math Rendering** | [KaTeX 0.16](https://katex.org/) |
 | **Mobile Runtime** | [Capacitor 8](https://capacitorjs.com/) (Android API 24–36, target SDK 36) |
-| **Plugins & Native APIs** | `@capacitor-community/sqlite`, `@capacitor/filesystem`, `@capacitor/clipboard`, `@capacitor-community/text-to-speech`, `@capacitor/preferences`, `@capawesome/capacitor-file-picker`, `@capacitor/app` |
+| **Plugins & Native APIs** | `@capacitor-community/sqlite`, `@capacitor/filesystem`, `@capacitor/clipboard`, `@capacitor-community/text-to-speech` (patched for locale caching & promise-safe lifecycle), `@capacitor/preferences`, `@capawesome/capacitor-file-picker`, `@capacitor/app` |
 | **Asset Generation** | `@capacitor/assets` |
-| **Build & Tooling** | [Vite 6](https://vitejs.dev/), ESLint, Gradle 8.13 |
+| **Build & Tooling** | [Vite 6](https://vitejs.dev/), ESLint, Gradle 8.13, [patch-package](https://www.npmjs.com/package/patch-package) |
 
 ---
 
@@ -161,6 +166,8 @@ ecengine_companion/
 │   ├── app/src/main/res/             # Native resources, mipmap launcher icons, adaptive XML
 │   └── variables.gradle              # Android SDK configuration (minSdk 24, targetSdk 36)
 ├── assets/                           # Source icons for @capacitor/assets generation
+├── patches/                          # Reproducible native plugin patches via patch-package
+│   └── @capacitor-community+text-to-speech+8.0.2.patch
 ├── reference/                        # Desktop reference files (read-only, used to port behavior/assets)
 ├── src/
 │   ├── assets/
@@ -180,7 +187,7 @@ ecengine_companion/
 │   │   └── TestSettingsModal.tsx     # Pre-launch timed test configuration
 │   ├── hooks/
 │   │   ├── useSound.ts               # Sound effect playback
-│   │   └── useTTS.ts                 # Android native Text-to-Speech synthesis
+│   │   └── useTTS.ts                 # React hook delegating to TTSService singleton
 │   ├── lib/                          # Pure utility libraries (latex, subjectColors, sampling)
 │   ├── pages/
 │   │   ├── FlashcardSession.tsx      # Flashcard & Formula study runner
@@ -188,17 +195,18 @@ ecengine_companion/
 │   │   ├── Settings.tsx              # Database import & AI key manager
 │   │   ├── TestMode.tsx              # Timed exam simulation runner
 │   │   ├── TestPaperView.tsx         # Printable-style continuous deck view
-│   │   └── TopicBrowser.tsx          # Main subject & topic explorer
+│   │   └── TopicBrowser.tsx          # Main subject & topic explorer (progressive batch rendering)
 │   ├── services/
 │   │   ├── bookmark.service.ts       # MCQ bookmark manager (Preferences)
 │   │   ├── clipboard.service.ts      # Native Android clipboard with fallback
-│   │   ├── db.service.ts             # SQLite database service (read-only)
+│   │   ├── db.service.ts             # SQLite database service with in-memory caching
 │   │   ├── dbImport.service.ts       # File picker & database import
 │   │   ├── explain.service.ts        # Multi-provider LLM API client
 │   │   ├── flashcardBookmark.service.ts # Flashcard & Formula bookmark manager
-│   │   └── image.service.ts          # Unpacked image resolution
+│   │   ├── image.service.ts          # Unpacked image resolution
+│   │   └── tts.service.ts            # Pipelined sentence streaming & cancellation TTS service
 │   ├── types/                        # Shared TypeScript models (Card, MCQData, FlashcardData, FormulaData)
-│   ├── App.tsx                       # Root state machine & session router
+│   ├── App.tsx                       # Root state machine, background listeners & session router
 │   ├── index.css                     # Font imports & Tailwind base
 │   └── main.tsx                      # React DOM entrypoint
 ├── capacitor.config.ts               # Capacitor app identifier & web bundle target
@@ -224,6 +232,8 @@ git clone <repo-url>
 cd ecengine_companion
 npm install
 ```
+
+> 💡 `npm install` automatically runs `patch-package` postinstall to apply native Android fixes to `@capacitor-community/text-to-speech`.
 
 ### Running the Web Dev Server
 
