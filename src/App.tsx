@@ -6,7 +6,9 @@ import { DEFAULT_TEST_SETTINGS } from './components/TestSettingsModal'
 import { FlashcardSettings, DEFAULT_FLASHCARD_SETTINGS } from './components/FlashcardSettingsModal'
 import type { LearnPipelineSettings } from './lib/learnPipeline'
 import { dbService, Folder, openDatabase, getPreviouslyImportedDbPath } from './services/db.service'
+import { ttsService } from './services/tts.service'
 import { Card } from './types'
+import { App as CapacitorApp } from '@capacitor/app'
 
 const LearnSession = lazy(() =>
   import('./pages/LearnSession').then((m) => ({ default: m.LearnSession }))
@@ -66,6 +68,39 @@ function App() {
   const [dbVersion, setDbVersion] = useState(0)
   const [folders, setFolders] = useState<Folder[]>([])
   const [formulaFolders, setFormulaFolders] = useState<Folder[]>([])
+
+  // Pre-warm the native TTS service early on app boot to avoid cold-start penalties
+  useEffect(() => {
+    ttsService.prewarm()
+  }, [])
+
+  // Stop TTS immediately on screen lock, minimize, or backgrounding
+  useEffect(() => {
+    let appListenerHandle: { remove: () => Promise<void> } | null = null
+
+    CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (!isActive) {
+        ttsService.stop()
+      }
+    }).then((handle) => {
+      appListenerHandle = handle
+    })
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        ttsService.stop()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      if (appListenerHandle) {
+        appListenerHandle.remove()
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
 
   // Fetch folders on mount / dbVersion change
   useEffect(() => {

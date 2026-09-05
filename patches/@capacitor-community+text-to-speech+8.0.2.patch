@@ -1,0 +1,209 @@
+diff --git a/node_modules/@capacitor-community/text-to-speech/android/src/main/java/com/getcapacitor/community/tts/TextToSpeech.java b/node_modules/@capacitor-community/text-to-speech/android/src/main/java/com/getcapacitor/community/tts/TextToSpeech.java
+index 3ad7683..924cd34 100644
+--- a/node_modules/@capacitor-community/text-to-speech/android/src/main/java/com/getcapacitor/community/tts/TextToSpeech.java
++++ b/node_modules/@capacitor-community/text-to-speech/android/src/main/java/com/getcapacitor/community/tts/TextToSpeech.java
+@@ -21,24 +21,43 @@ import java.util.Set;
+ public class TextToSpeech implements android.speech.tts.TextToSpeech.OnInitListener {
+ 
+     public static final String LOG_TAG = "TextToSpeech";
++    private static final boolean DEBUG_BENCHMARK = false;
++
++    private void logBenchmark(String message) {
++        if (DEBUG_BENCHMARK) {
++            android.util.Log.d("TTS_BENCHMARK", message);
++        }
++    }
+ 
+     private Context context;
+     private android.speech.tts.TextToSpeech tts = null;
+     private int initializationStatus;
+     private JSObject[] supportedVoices = null;
+     private Map<String, SpeakResultCallback> requests = new HashMap();
++    private Map<String, Long> utteranceSpeakTimes = new HashMap();
++    private long initStartTime = 0;
++    private Locale currentLocale = null;
+ 
+     TextToSpeech(Context context) {
+         this.context = context;
++        this.initStartTime = System.currentTimeMillis();
++        logBenchmark("[INIT] Binding native Android TextToSpeech service...");
+         try {
+             tts = new android.speech.tts.TextToSpeech(context, this);
+             tts.setOnUtteranceProgressListener(
+                 new UtteranceProgressListener() {
+                     @Override
+-                    public void onStart(String utteranceId) {}
++                    public void onStart(String utteranceId) {
++                        Long startTime = utteranceSpeakTimes.get(utteranceId);
++                        long latency = (startTime != null) ? (System.currentTimeMillis() - startTime) : -1;
++                        logBenchmark(String.format("[UtteranceProgressListener.onStart] id=%s -> AUDIO PLAYBACK STARTED (Latency since tts.speak() dispatch: %d ms)", utteranceId, latency));
++                    }
+ 
+                     @Override
+                     public void onDone(String utteranceId) {
++                        Long startTime = utteranceSpeakTimes.remove(utteranceId);
++                        long totalDuration = (startTime != null) ? (System.currentTimeMillis() - startTime) : -1;
++                        logBenchmark(String.format("[UtteranceProgressListener.onDone] id=%s -> Utterance finished (Total duration from dispatch: %d ms)", utteranceId, totalDuration));
+                         SpeakResultCallback callback = requests.get(utteranceId);
+                         if (callback != null) {
+                             callback.onDone();
+@@ -48,6 +67,9 @@ public class TextToSpeech implements android.speech.tts.TextToSpeech.OnInitListe
+ 
+                     @Override
+                     public void onError(String utteranceId) {
++                        Long startTime = utteranceSpeakTimes.remove(utteranceId);
++                        long elapsed = (startTime != null) ? (System.currentTimeMillis() - startTime) : -1;
++                        logBenchmark(String.format("[UtteranceProgressListener.onError] id=%s -> ERROR after %d ms", utteranceId, elapsed));
+                         SpeakResultCallback callback = requests.get(utteranceId);
+                         if (callback != null) {
+                             callback.onError();
+@@ -72,6 +94,15 @@ public class TextToSpeech implements android.speech.tts.TextToSpeech.OnInitListe
+     @Override
+     public void onInit(int status) {
+         this.initializationStatus = status;
++        long elapsed = System.currentTimeMillis() - initStartTime;
++        logBenchmark(String.format("[OnInitListener.onInit] Native TTS binding completed in %d ms (status=%d, %s)",
++            elapsed, status, status == android.speech.tts.TextToSpeech.SUCCESS ? "SUCCESS" : "FAILED"));
++        if (tts != null) {
++            try {
++                String defaultEngine = tts.getDefaultEngine();
++                logBenchmark(String.format("[OnInitListener.onInit] Current default engine: %s", defaultEngine));
++            } catch (Exception ignored) {}
++        }
+     }
+ 
+     public void speak(
+@@ -98,8 +129,22 @@ public class TextToSpeech implements android.speech.tts.TextToSpeech.OnInitListe
+         SpeakResultCallback resultCallback,
+         int queueStrategy
+     ) {
++        long tStart = System.currentTimeMillis();
++        String textPreview = text != null ? text.substring(0, Math.min(text.length(), 40)).replace("\n", " ") : "";
++        logBenchmark(String.format("[speak() ENTRY] id=%s | queueStrategy=%d (%s) | text=\"%s%s\"",
++            callbackId,
++            queueStrategy,
++            queueStrategy == android.speech.tts.TextToSpeech.QUEUE_ADD ? "QUEUE_ADD" : "QUEUE_FLUSH",
++            textPreview,
++            text != null && text.length() > 40 ? "..." : ""));
++
+         if (queueStrategy != android.speech.tts.TextToSpeech.QUEUE_ADD) {
++            long tBeforeStop = System.currentTimeMillis();
+             stop();
++            long tAfterStop = System.currentTimeMillis();
++            logBenchmark(String.format("  ├─ stop() call took: %d ms", (tAfterStop - tBeforeStop)));
++        } else {
++            logBenchmark("  ├─ stop() skipped (QUEUE_ADD)");
+         }
+         requests.put(callbackId, resultCallback);
+ 
+@@ -109,23 +154,58 @@ public class TextToSpeech implements android.speech.tts.TextToSpeech.OnInitListe
+         ttsParams.putSerializable(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, callbackId);
+         ttsParams.putSerializable(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, volume);
+ 
+-        tts.setLanguage(locale);
++        if (currentLocale == null || !currentLocale.equals(locale)) {
++            long tBeforeLang = System.currentTimeMillis();
++            int langResult = tts.setLanguage(locale);
++            currentLocale = locale;
++            long tAfterLang = System.currentTimeMillis();
++            logBenchmark(String.format("  ├─ tts.setLanguage(%s) took: %d ms (resultCode=%d)", lang, (tAfterLang - tBeforeLang), langResult));
++        } else {
++            logBenchmark(String.format("  ├─ tts.setLanguage(%s) skipped (already set to %s, 0 ms)", lang, currentLocale));
++        }
++
++        long tBeforeParams = System.currentTimeMillis();
+         tts.setSpeechRate(rate);
+         tts.setPitch(pitch);
++        long tAfterParams = System.currentTimeMillis();
++        logBenchmark(String.format("  ├─ setSpeechRate(%.2f) + setPitch(%.2f) took: %d ms", rate, pitch, (tAfterParams - tBeforeParams)));
+ 
+         if (voice >= 0) {
++            long tBeforeVoice = System.currentTimeMillis();
+             ArrayList<Voice> supportedVoices = getSupportedVoicesOrdered();
+             if (voice < supportedVoices.size()) {
+                 Voice newVoice = supportedVoices.get(voice);
+                 int resultCode = tts.setVoice(newVoice);
++                long tAfterVoice = System.currentTimeMillis();
++                logBenchmark(String.format("  ├─ setVoice(%s) took: %d ms (resultCode=%d)", newVoice.getName(), (tAfterVoice - tBeforeVoice), resultCode));
+             }
+         }
+-        tts.speak(text, queueStrategy, ttsParams, callbackId);
++
++        long tBeforeNativeSpeak = System.currentTimeMillis();
++        logBenchmark(String.format("  ├─ Total pre-speak setup time: %d ms (from method entry to tts.speak)", (tBeforeNativeSpeak - tStart)));
++
++        utteranceSpeakTimes.put(callbackId, tBeforeNativeSpeak);
++        int speakResult = tts.speak(text, queueStrategy, ttsParams, callbackId);
++        long tAfterNativeSpeak = System.currentTimeMillis();
++        logBenchmark(String.format("  └─ tts.speak(...) native IPC call returned in: %d ms (resultCode=%d | total speak() method duration: %d ms)",
++            (tAfterNativeSpeak - tBeforeNativeSpeak), speakResult, (tAfterNativeSpeak - tStart)));
+     }
+ 
+     public void stop() {
++        long t0 = System.currentTimeMillis();
+         tts.stop();
++        ArrayList<SpeakResultCallback> pendingCallbacks = new ArrayList<>(requests.values());
+         requests.clear();
++        utteranceSpeakTimes.clear();
++        for (SpeakResultCallback callback : pendingCallbacks) {
++            if (callback != null) {
++                try {
++                    callback.onError();
++                } catch (Exception ignored) {}
++            }
++        }
++        long elapsed = System.currentTimeMillis() - t0;
++        logBenchmark(String.format("[stop()] tts.stop() executed in: %d ms (cleared %d pending callbacks)", elapsed, pendingCallbacks.size()));
+     }
+ 
+     public JSArray getSupportedLanguages() {
+diff --git a/node_modules/@capacitor-community/text-to-speech/android/src/main/java/com/getcapacitor/community/tts/TextToSpeechPlugin.java b/node_modules/@capacitor-community/text-to-speech/android/src/main/java/com/getcapacitor/community/tts/TextToSpeechPlugin.java
+index 62eaf01..e131d81 100644
+--- a/node_modules/@capacitor-community/text-to-speech/android/src/main/java/com/getcapacitor/community/tts/TextToSpeechPlugin.java
++++ b/node_modules/@capacitor-community/text-to-speech/android/src/main/java/com/getcapacitor/community/tts/TextToSpeechPlugin.java
+@@ -13,6 +13,13 @@ import com.getcapacitor.annotation.CapacitorPlugin;
+ public class TextToSpeechPlugin extends Plugin {
+ 
+     public static final String LOG_TAG = "TextToSpeechPlugin";
++    private static final boolean DEBUG_BENCHMARK = false;
++
++    private void logBenchmark(String message) {
++        if (DEBUG_BENCHMARK) {
++            Log.d("TTS_BENCHMARK", message);
++        }
++    }
+ 
+     public static final String ERROR_UTTERANCE = "Failed to read text.";
+     public static final String ERROR_UNSUPPORTED_LANGUAGE = "This language is not supported.";
+@@ -26,8 +33,10 @@ public class TextToSpeechPlugin extends Plugin {
+ 
+     @PluginMethod
+     public void speak(PluginCall call) {
++        long tPluginStart = System.currentTimeMillis();
+         boolean isAvailable = implementation.isAvailable();
+         if (!isAvailable) {
++            logBenchmark("[Plugin.speak] Engine not yet available!");
+             call.unavailable("Not yet initialized or not available on this device.");
+             return;
+         }
+@@ -40,7 +49,11 @@ public class TextToSpeechPlugin extends Plugin {
+         int voice = call.getInt("voice", -1);
+         int queueStrategy = call.getInt("queueStrategy", 0);
+ 
++        long tBeforeLangCheck = System.currentTimeMillis();
+         boolean isLanguageSupported = implementation.isLanguageSupported(lang);
++        long tAfterLangCheck = System.currentTimeMillis();
++        logBenchmark(String.format("[Plugin.speak] isLanguageSupported(%s) IPC check took: %d ms (supported=%b)", lang, (tAfterLangCheck - tBeforeLangCheck), isLanguageSupported));
++
+         if (!isLanguageSupported) {
+             call.reject(ERROR_UNSUPPORTED_LANGUAGE);
+             return;
+@@ -69,6 +82,8 @@ public class TextToSpeechPlugin extends Plugin {
+         };
+ 
+         try {
++            long tBeforeImpl = System.currentTimeMillis();
++            logBenchmark(String.format("[Plugin.speak] Bridge overhead before implementation.speak(): %d ms", (tBeforeImpl - tPluginStart)));
+             implementation.speak(text, lang, rate, pitch, volume, voice, call.getCallbackId(), resultCallback, queueStrategy);
+         } catch (Exception ex) {
+             call.reject(ex.getLocalizedMessage());

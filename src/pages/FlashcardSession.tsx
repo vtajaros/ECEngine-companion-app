@@ -194,7 +194,10 @@ export function FlashcardSession({
         : getFrontText(currentCard, settings.swapTermDef)
       speak(textToSpeak)
     }
-  }, [currentCard, isFlipped, isCompleted, settings.ttsEnabled, settings.swapTermDef, cardType, speak])
+    return () => {
+      stop()
+    }
+  }, [currentCard, isFlipped, isCompleted, settings.ttsEnabled, settings.swapTermDef, cardType, speak, stop])
 
   const handleGetContext = async () => {
     if (!currentCard) return
@@ -315,7 +318,7 @@ Provide a thorough explanation covering ALL of the following:
       </header>
 
       {/* Main Content Area */}
-      <main className={`flex-1 px-4 sm:px-6 landscape:py-4 flex flex-col ${isCompleted ? 'justify-start pt-2 pb-4' : 'justify-center py-6'}`}>
+      <main className="flex-1 px-4 sm:px-6 landscape:py-4 flex flex-col justify-center py-6">
         <div className="mx-auto max-w-2xl landscape:max-w-4xl w-full">
           {/* Loading State */}
           {isLoading && (
