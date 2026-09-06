@@ -71,6 +71,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
   // Solution reveal gating (500ms delay when solution content is available)
   const [showSolution, setShowSolution] = useState(false)
   const solutionRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Lazy image URI state for current active card
   const [questionImageSrc, setQuestionImageSrc] = useState<string | null>(null)
@@ -217,6 +218,13 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
       solutionRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
   }, [showSolution])
+
+  // Reset scroll container to top when transitioning questions or rounds
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: 'instant' })
+    }
+  }, [currentCardIndex, currentPartitionIndex])
 
   // Resolve question & solution images lazily for the active card
   useEffect(() => {
@@ -399,7 +407,10 @@ Please explain:
   const isSummaryState = viewState === 'round-complete' || viewState === 'set-complete'
 
   return (
-    <div className={`flex h-full flex-col bg-neutral-950 text-neutral-50 ${isSummaryState ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+    <div
+      ref={scrollContainerRef}
+      className={`flex h-full flex-col bg-neutral-950 text-neutral-50 ${isSummaryState ? 'overflow-hidden' : 'overflow-y-auto'}`}
+    >
       {/* Top Header */}
       <header className="shrink-0 sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-md px-4 py-3 sm:px-6">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
@@ -477,10 +488,10 @@ Please explain:
 
       {/* Main Content Area */}
       <main
-        className={`flex-1 px-4 sm:px-6 flex flex-col min-h-0 ${
+        className={`flex-1 px-4 sm:px-6 flex flex-col ${
           isSummaryState
-            ? 'justify-start pt-2 pb-3'
-            : 'justify-center py-6'
+            ? 'min-h-0 justify-start pt-2 pb-3'
+            : 'justify-start pt-4 pb-16 sm:pt-6 sm:pb-20'
         }`}
       >
         <div className={`mx-auto max-w-3xl w-full ${isSummaryState ? 'flex-1 flex flex-col min-h-0' : ''}`}>

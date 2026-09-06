@@ -318,8 +318,8 @@ Provide a thorough explanation covering ALL of the following:
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 px-4 sm:px-6 landscape:py-4 flex flex-col justify-center py-6">
-        <div className="mx-auto max-w-2xl landscape:max-w-4xl w-full">
+      <main className="flex-1 px-4 sm:px-6 landscape:py-4 flex flex-col justify-start py-6 pb-16">
+        <div className="mx-auto my-auto max-w-2xl landscape:max-w-4xl w-full">
           {/* Loading State */}
           {isLoading && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
