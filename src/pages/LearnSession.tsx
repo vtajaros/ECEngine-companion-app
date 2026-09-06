@@ -491,10 +491,10 @@ Please explain:
         className={`flex-1 px-4 sm:px-6 flex flex-col ${
           isSummaryState
             ? 'min-h-0 justify-start pt-2 pb-3'
-            : 'justify-start pt-4 pb-16 sm:pt-6 sm:pb-20'
+            : 'py-6 pb-16'
         }`}
       >
-        <div className={`mx-auto max-w-3xl w-full ${isSummaryState ? 'flex-1 flex flex-col min-h-0' : ''}`}>
+        <div className={`mx-auto max-w-3xl w-full ${isSummaryState ? 'flex-1 flex flex-col min-h-0' : 'my-auto'}`}>
           {/* Loading State */}
           {isLoading && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
