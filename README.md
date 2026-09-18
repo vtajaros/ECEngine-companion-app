@@ -20,20 +20,20 @@ Built with **React 19**, **TypeScript**, **Tailwind CSS**, and **Capacitor 8**.
 - **Landscape-Optimized Layout**: Wide horizontal presentation (`landscape:max-w-4xl`) with tailored font scaling and height adjustments for landscape studying.
 - **Zero-Latency Pipelined Text-to-Speech (TTS)**: Custom singleton streaming pipeline that plays Sentence 1 in under 200ms using native `QUEUE_FLUSH` while background-synthesizing subsequent sentences with `QUEUE_ADD`. Automatically suppresses raw LaTeX in formulas, preserves engineering decimals (`12.5 V`, `0.7 mA`) and technical abbreviations (`fig.`, `approx.`, `e.g.`), and cancels immediately on card flip, navigation, screen lock, or app backgrounding.
 - **Pre-Launch Settings Modal**: Context-aware modal to configure card shuffling, Term ↔ Definition (or Name ↔ Formula) swap, bookmark filtering, and TTS.
-- **AI Context & Explanations**: One-tap prompt generator (`Get Context`) with native Android clipboard integration for external LLMs (ChatGPT, Gemini, Claude), plus in-app AI explanation panels using your own API key.
+- **AI Context & Explanations**: One-tap prompt generator (`Get Context`) with native Android clipboard integration for external LLMs (ChatGPT, Gemini, Claude), plus in-app AI explanation panels with desktop-parity markdown formatting, terminal styling (Orbitron + JetBrains Mono), numbered list segmentation, callout blocks, and robust inline KaTeX math rendering.
 
 ### 📚 LooksFam / Learn Mode
 - **Multiple-Choice Question Drills**: Instant feedback and choice scrambling to eliminate positional memory bias.
 - **Pipelined Audio Read-Aloud**: Instant question narration with sentence streaming, math symbol normalization (`Ω` → "ohms", `μ` → "micro", `√` → "square root of"), and automatic silence on answer selection, navigation, or phone screen lock.
 - **Sound Effects**: Correct/wrong/round-complete audio feedback.
-- **Full Solution Breakdowns**: KaTeX-rendered mathematical derivations, step-by-step explanations, and interactive diagram lightboxes.
+- **Full Solution Breakdowns**: KaTeX-rendered mathematical derivations, step-by-step explanations, callout boxes, and interactive diagram lightboxes.
 - **Active Partition Queue**: Missed questions automatically requeue until 100% mastery is reached for the session.
 - **Pre-Launch Configuration**: Custom question count, random sampling, choice shuffling, and bookmark filtering.
 
 ### 📝 Test Mode & Test Paper View
 - **Timed Exam Simulation**: Real-time countdown timer, question status navigation rail, choice scrambling, audio cues, and flagging.
 - **Performance Summary**: Score calculation, time spent, and accuracy breakdown.
-- **Test Paper View**: Continuous, printable-style document viewer supporting Table, Glossary/List, and Q&A layouts with Light, Sepia, and Dark themes — display-only (no export/print/share; see Design Philosophy below).
+- **Test Paper View**: Continuous, printable-style document viewer matching desktop typography with Rajdhani font, JetBrains Mono formula blocks, and mobile-optimized question/choice scaling (Table, Glossary/List, and Q&A layouts with Light, Sepia, and Dark themes) — display-only (no export/print/share; see Design Philosophy below).
 
 ### 🗂️ Topic Browser & Subject Filtering
 - **Progressive Batch Rendering & Virtualization**: Progressive batching (24 cards per slice) via `IntersectionObserver` eliminating DOM freeze and layout lag across 160+ decks.
@@ -149,8 +149,9 @@ review — reading, drilling, and testing — fast and pleasant on a phone.
 | Layer | Technologies |
 |---|---|
 | **Framework & UI** | [React 19](https://react.dev/), [TypeScript 5.9](https://www.typescriptlang.org/), [Tailwind CSS 3.4](https://tailwindcss.com/) |
+| **Typography & Fonts** | [JetBrains Mono](https://www.jetbrains.com/lp/mono/), [Rajdhani](https://fonts.google.com/specimen/Rajdhani), [Orbitron](https://fonts.google.com/specimen/Orbitron) (100% offline self-hosted `@font-face`) |
 | **Animation & Icons** | [Framer Motion 11](https://www.framer.com/motion/), [Lucide React](https://lucide.dev/) |
-| **Math Rendering** | [KaTeX 0.16](https://katex.org/) |
+| **Math Rendering** | [KaTeX 0.16](https://katex.org/) (with inline math delimiter guards & Prose fallback) |
 | **Mobile Runtime** | [Capacitor 8](https://capacitorjs.com/) (Android API 24–36, target SDK 36) |
 | **Plugins & Native APIs** | `@capacitor-community/sqlite`, `@capacitor/filesystem`, `@capacitor/clipboard`, `@capacitor-community/text-to-speech` (patched for locale caching & promise-safe lifecycle), `@capacitor/preferences`, `@capawesome/capacitor-file-picker`, `@capacitor/app` |
 | **Asset Generation** | `@capacitor/assets` |
@@ -172,7 +173,7 @@ ecengine_companion/
 ├── src/
 │   ├── assets/
 │   │   ├── images/                   # Native ECEngine logo & UI branding
-│   │   ├── fonts/                    # Self-hosted brand fonts (Orbitron)
+│   │   ├── fonts/                    # Self-hosted brand fonts (Orbitron, JetBrains Mono, Rajdhani)
 │   │   └── sounds/                   # Audio feedback assets
 │   ├── components/
 │   │   ├── AutoFitText.tsx           # Real-time DOM width math & KaTeX auto-fit scaler
