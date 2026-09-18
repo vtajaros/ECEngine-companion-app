@@ -65,6 +65,11 @@ export function FlashcardSession({
   const [explanationOpen, setExplanationOpen] = useState(false)
   const [showContextToast, setShowContextToast] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const lightboxSrcRef = useRef<string | null>(null)
+  useEffect(() => {
+    lightboxSrcRef.current = lightboxSrc
+  }, [lightboxSrc])
+
   const [isCompleted, setIsCompleted] = useState(false)
 
   const [isLoading, setIsLoading] = useState(true)
@@ -72,6 +77,16 @@ export function FlashcardSession({
 
   // Exit confirmation modal state
   const [showExitConfirm, setShowExitConfirm] = useState(false)
+  const showExitConfirmRef = useRef(showExitConfirm)
+  useEffect(() => {
+    showExitConfirmRef.current = showExitConfirm
+  }, [showExitConfirm])
+
+  const showSettingsModalRef = useRef(showSettingsModal)
+  useEffect(() => {
+    showSettingsModalRef.current = showSettingsModal
+  }, [showSettingsModal])
+
   const isActiveStudyState = !isCompleted && !isLoading && rawCards.length > 0
   const isActiveStudyStateRef = useRef(isActiveStudyState)
 
@@ -82,6 +97,22 @@ export function FlashcardSession({
   // Android hardware back button handler
   useEffect(() => {
     const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      // 1. If image lightbox is open, close image preview only
+      if (lightboxSrcRef.current) {
+        setLightboxSrc(null)
+        return
+      }
+      // 2. If settings modal is open, dismiss the modal
+      if (showSettingsModalRef.current) {
+        setShowSettingsModal(false)
+        return
+      }
+      // 3. If exit confirm modal is open, dismiss the modal
+      if (showExitConfirmRef.current) {
+        setShowExitConfirm(false)
+        return
+      }
+      // 4. Otherwise, if actively studying, confirm before leaving
       if (isActiveStudyStateRef.current) {
         setShowExitConfirm(true)
       } else {
@@ -89,7 +120,7 @@ export function FlashcardSession({
       }
     })
     return () => {
-      listenerPromise.then((handle) => handle.remove())
+      listenerPromise.then((handle) => handle.remove()).catch(() => {})
     }
   }, [onExit])
 

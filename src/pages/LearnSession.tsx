@@ -79,6 +79,10 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
 
   // Fullscreen image lightbox state
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const lightboxSrcRef = useRef<string | null>(null)
+  useEffect(() => {
+    lightboxSrcRef.current = lightboxSrc
+  }, [lightboxSrc])
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -90,6 +94,11 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
 
   // Exit confirmation modal state
   const [showExitConfirm, setShowExitConfirm] = useState(false)
+  const showExitConfirmRef = useRef(showExitConfirm)
+  useEffect(() => {
+    showExitConfirmRef.current = showExitConfirm
+  }, [showExitConfirm])
+
   const isActiveStudyState = viewState === 'question' || viewState === 'feedback' || viewState === 'round-complete'
   const isActiveStudyStateRef = useRef(isActiveStudyState)
 
@@ -100,6 +109,17 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
   // Intercept hardware/gesture back button on Android
   useEffect(() => {
     const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      // 1. If image lightbox is open, close image preview only
+      if (lightboxSrcRef.current) {
+        setLightboxSrc(null)
+        return
+      }
+      // 2. If exit confirm modal is open, dismiss the modal
+      if (showExitConfirmRef.current) {
+        setShowExitConfirm(false)
+        return
+      }
+      // 3. Otherwise, check study state
       if (isActiveStudyStateRef.current) {
         setShowExitConfirm(true)
       } else {
@@ -107,7 +127,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
       }
     })
     return () => {
-      listenerPromise.then((handle) => handle.remove())
+      listenerPromise.then((handle) => handle.remove()).catch(() => {})
     }
   }, [onExit])
 

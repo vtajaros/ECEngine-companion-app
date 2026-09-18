@@ -55,8 +55,8 @@ export const protectCurrencyAndEscapedDollars = (text: string): string => {
   // 2. Scan through dollar signs to differentiate currency from LaTeX math delimiters
   // A dollar sign directly preceding digits (e.g. $500,000 or $25,000) is currency if:
   // - It has no matching closing $ on the same line, OR
-  // - The text between it and the next $ looks like English prose (e.g. 2+ prose words, no LaTeX commands or math operators)
-  const dollarRegex = /(^|[\s([{,;:])(?<!\$)\$(?!\$)(?=\s?\d[\d,]*(?:\.\d+)?(?:[kKmMbBtT])?\b)/g
+  // - The text between it and the next $ contains English prose words (e.g. "$500,000, but the cost was $150,000")
+  const dollarRegex = /(^|[\s(\[{,;:])(?<!\$)\$(?!\$)(?=\s?\d[\d,]*(?:\.\d+)?(?:[kKmMbBtT])?\b)/g
 
   let match: RegExpExecArray | null
   while ((match = dollarRegex.exec(result)) !== null) {
@@ -66,9 +66,11 @@ export const protectCurrencyAndEscapedDollars = (text: string): string => {
     // Find the next single $ after this dollar sign (if any)
     const restOfText = result.slice(dollarIndex + 1)
     const nextDollarOffset = restOfText.search(/(?<!\$)\$(?!\$)/)
+    const newlineOffset = restOfText.indexOf('\n')
 
-    if (nextDollarOffset === -1) {
-      // Unpaired dollar sign before a number -> definitely currency
+    // Single $ inline math delimiter cannot cross newlines
+    if (nextDollarOffset === -1 || (newlineOffset !== -1 && newlineOffset < nextDollarOffset)) {
+      // Unpaired dollar sign before a number on the current line -> definitely currency
       result = result.slice(0, dollarIndex) + CURRENCY_TOKEN + result.slice(dollarIndex + 1)
       dollarRegex.lastIndex = dollarIndex + CURRENCY_TOKEN.length
       continue
@@ -76,24 +78,17 @@ export const protectCurrencyAndEscapedDollars = (text: string): string => {
 
     const insideCandidate = restOfText.slice(0, nextDollarOffset)
 
-    // Check if the candidate inside is a valid math expression vs prose
-    const hasLatexCommand = /\\([a-zA-Z]+)/.test(insideCandidate)
-    const hasMathScript = /[\^_][{0-9a-zA-Z]/.test(insideCandidate)
-    const hasMathRel = /[=<>≈≤≥±]/.test(insideCandidate)
-
     let stripped = insideCandidate.replace(/\\(text|mathrm|textbf|textit)\{[^}]*\}/g, '')
     stripped = stripped.replace(/\\[a-zA-Z]+/g, '')
     const words = (stripped.match(/\b[a-zA-Z]{2,}\b/g) || []).filter(w => !MATH_FUNCTION_WORDS.has(w.toLowerCase()))
-    const isProse = words.length >= 2 && /\s/.test(stripped)
+    const isProse = words.length >= 1
 
-    const isMath = (hasLatexCommand || hasMathScript || hasMathRel) && !isProse
-
-    if (!isMath) {
+    if (isProse) {
       // This is a currency symbol, not a LaTeX math delimiter
       result = result.slice(0, dollarIndex) + CURRENCY_TOKEN + result.slice(dollarIndex + 1)
       dollarRegex.lastIndex = dollarIndex + CURRENCY_TOKEN.length
     } else {
-      // It's a valid math block, skip past the closing $
+      // It's a valid math block (e.g. $32$, $16$, $x=5$), skip past the closing $
       dollarRegex.lastIndex = dollarIndex + 1 + nextDollarOffset + 1
     }
   }
@@ -196,8 +191,8 @@ function applyInlineFormatting(text: string): string {
 
   // Subscript: _{multi}, _(...) (parenthesized group),
   // or _x (single non-space char or number with optional sign/decimal)
-  result = result.replace(/_\{([^}]+)\}/g, '<sub>$1</sub>')
-  result = result.replace(/_\(([^)]*)\)/g, '<sub>($1)</sub>')
+  result = result.replace(/\_\{([^}]+)\}/g, '<sub>$1</sub>')
+  result = result.replace(/\_\(([^)]*)\)/g, '<sub>($1)</sub>')
   result = result.replace(/(?<!\*\*?)(?<!_)_(?!\*\*?)([+-]?\d+(?:\.\d+)?|[^\s_{(])/g, '<sub>$1</sub>')
 
   return result
@@ -225,7 +220,7 @@ function renderProseSegment(segment: string): string {
     try {
       parts.push(
         katex.renderToString(restoreCurrencyTokens(m[0].trim()), {
-          throwOnError: false,
+          throwOnError: true,
           displayMode: false
         })
       )
@@ -256,9 +251,9 @@ export const renderMath = (text: string): string => {
   // ── Normalize non-standard / MathJax-only commands to KaTeX equivalents ──
   const normalized = text
     .replace(/\\exponentialE\b/g, 'e')           // Euler's number e
-    .replace(/\\imaginaryI\s*/g, 'i')            // imaginary unit i
-    .replace(/\\imaginaryJ\s*/g, 'j')            // imaginary unit j (engineering)
-    .replace(/\\differentialD\s*/g, 'd')         // differential d
+    .replace(/\\imaginaryI\b/g, 'i')             // imaginary unit i
+    .replace(/\\imaginaryJ\b/g, 'j')             // imaginary unit j (engineering)
+    .replace(/\\differentialD\b/g, 'd')          // differential d
     .replace(/\\capitalDifferentialD\b/g, 'D')   // D operator
     .replace(/\\DoubleStruckCapitalE\b/g, '\\mathbb{E}') // Expected value E
     .replace(/\\DoubleStruckCapitalN\b/g, '\\mathbb{N}') // Natural numbers
@@ -275,7 +270,7 @@ export const renderMath = (text: string): string => {
     .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
 
   // Protect currency amounts ($500,000, $150) and escaped dollars (\$)
-  const t = protectCurrencyAndEscapedDollars(normalized)
+  let t = protectCurrencyAndEscapedDollars(normalized)
 
   // ── Path A: pure raw LaTeX with no $ delimiters ──
   // Only render the entire string with KaTeX if it is purely a math expression.
@@ -285,7 +280,7 @@ export const renderMath = (text: string): string => {
       try {
         return restoreCurrencyTokens(
           katex.renderToString(t, {
-            throwOnError: false,
+            throwOnError: true,
             displayMode: true,
             trust: true
           })
@@ -311,12 +306,12 @@ export const renderMath = (text: string): string => {
     try {
       segments.push(
         katex.renderToString(restoreCurrencyTokens(inner.trim()), {
-          throwOnError: false,
+          throwOnError: true,
           displayMode: isDisplay
         })
       )
     } catch {
-      segments.push(escapeHtml(restoreCurrencyTokens(match[0])))
+      segments.push(renderProseSegment(restoreCurrencyTokens(match[0])))
     }
     lastIndex = match.index + match[0].length
   }

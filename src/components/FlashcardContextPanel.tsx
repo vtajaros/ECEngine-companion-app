@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Sparkles, Terminal, Copy, Check, AlertCircle, X } from 'lucide-react'
+import { Sparkles, Terminal, Copy, Check, AlertCircle, X, Cpu } from 'lucide-react'
 import { getFlashcardExplanation, ExplainError } from '../services/explain.service'
 import { renderMath } from '../lib/latex'
 import { copyToClipboard } from '../services/clipboard.service'
@@ -118,23 +118,29 @@ export function FlashcardContextPanel({
   }, [explanation])
 
   return (
-    <div className="rounded-xl border border-[#00ff41]/30 bg-neutral-950/95 my-2.5 overflow-hidden shadow-lg transition-all animate-in fade-in duration-200">
-      {/* Terminal Style Header */}
-      <div className="flex items-center justify-between px-3.5 py-2 border-b border-neutral-800 bg-neutral-900/90">
+    <div className="relative my-2.5 w-full rounded-xl overflow-hidden border border-[#232730] bg-[#0c0d12] shadow-[0_8px_32px_rgba(0,0,0,0.7),0_0_15px_rgba(0,255,65,0.05)] transition-all animate-in fade-in duration-200">
+      {/* Code Block Terminal Header Bar */}
+      <div className="bg-[#12141a] border-b border-[#1f232c] px-3.5 py-2 flex items-center justify-between select-none">
+        {/* AI Model Badge / File Tab */}
         <div className="flex items-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-[#00ff41]" />
-          <span className="font-mono font-bold text-xs text-neutral-200 tracking-wider">
-            AI EXPLANATION
+          <Cpu className="w-3.5 h-3.5 text-[#00ff41]" />
+          <span className="font-['Orbitron'] font-bold text-[#00ff41] text-[11px] tracking-wider uppercase">
+            GPT-OSS-120B
+          </span>
+          <span className="inline-flex items-center gap-1 text-[10px] text-neutral-400 px-2 py-0.5 rounded bg-[#181b22] border border-[#262b35] font-['JetBrains_Mono',monospace]">
+            <Sparkles className="w-2.5 h-2.5 text-[#00ff41]/70" /> ai_explanation.md
           </span>
         </div>
 
+        {/* Actions (Copy + Close) */}
         <div className="flex items-center gap-1.5">
           {!loading && explanation && (
             <button
               type="button"
               onClick={handleCopy}
-              className="flex items-center gap-1 px-2 py-1 rounded text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 border border-transparent hover:border-neutral-700 transition-all font-mono text-[11px]"
+              className="flex items-center gap-1 px-2.5 py-1 rounded text-neutral-400 hover:text-white hover:bg-[#1a1d24] border border-transparent hover:border-[#2a2f3d] transition-all font-['JetBrains_Mono',monospace] text-xs cursor-pointer"
               title="Copy explanation"
+              aria-label="Copy explanation"
             >
               {copied ? (
                 <>
@@ -163,21 +169,21 @@ export function FlashcardContextPanel({
         </div>
       </div>
 
-      {/* Body */}
-      <div className="p-4 font-mono text-xs sm:text-[13px] text-neutral-200 leading-relaxed">
+      {/* Code Block Content Body with JetBrains Mono */}
+      <div className="p-4 sm:p-5 font-['JetBrains_Mono',monospace] text-[13px] sm:text-[13.5px] text-[#d4d4d4] leading-[1.75] selection:bg-[#00ff41]/20 selection:text-white">
         {loading && (
-          <div className="flex items-center gap-2 text-neutral-400 py-3">
+          <div className="flex items-center gap-2 text-neutral-400 py-2">
             <Terminal className="w-4 h-4 text-[#00ff41] animate-pulse" />
-            <span>Generating AI breakdown...</span>
+            <span className="text-[#a0a0a0]">Generating AI breakdown...</span>
           </div>
         )}
 
         {!loading && explanation && (
-          <div className="space-y-3.5">
+          <div className="space-y-4">
             {parsedParagraphs.map((p, idx) => {
               if (p.isNumberedList) {
                 return (
-                  <div key={idx} className="space-y-1.5 pl-1">
+                  <div key={idx} className="relative pl-1 space-y-1.5">
                     {p.headerHtml && (
                       <div dangerouslySetInnerHTML={{ __html: p.headerHtml }} />
                     )}
@@ -199,7 +205,7 @@ export function FlashcardContextPanel({
                   key={idx}
                   className={`relative transition-colors ${
                     p.isCallout
-                      ? 'border-l-2 border-[#00ff41] pl-3 py-1.5 my-1.5 bg-[#00ff41]/5 rounded-r text-neutral-100'
+                      ? 'border-l-2 border-[#00ff41] pl-3.5 py-1.5 my-2 bg-[#0c1a14]/40 rounded-r text-[#e8e8e8]'
                       : 'pl-1'
                   }`}
                   dangerouslySetInnerHTML={{ __html: p.paragraphHtml || '' }}

@@ -329,6 +329,21 @@ export function TestMode({ cards, title, settings, onComplete, onExit }: TestMod
   const [timeElapsed, setTimeElapsed] = useState(0)
   const [score, setScore] = useState({ correct: 0, total: 0 })
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const lightboxSrcRef = useRef<string | null>(null)
+  useEffect(() => {
+    lightboxSrcRef.current = lightboxSrc
+  }, [lightboxSrc])
+
+  const showSubmitConfirmRef = useRef(showSubmitConfirm)
+  useEffect(() => {
+    showSubmitConfirmRef.current = showSubmitConfirm
+  }, [showSubmitConfirm])
+
+  const showExitConfirmRef = useRef(showExitConfirm)
+  useEffect(() => {
+    showExitConfirmRef.current = showExitConfirm
+  }, [showExitConfirm])
+
   const [openExplanationId, setOpenExplanationId] = useState<number | null>(null)
 
   // Lazy image maps for all test cards (cardId -> resolved URL)
@@ -357,6 +372,22 @@ export function TestMode({ cards, title, settings, onComplete, onExit }: TestMod
 
   useEffect(() => {
     const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      // 1. If image lightbox is open, close image preview only
+      if (lightboxSrcRef.current) {
+        setLightboxSrc(null)
+        return
+      }
+      // 2. If submit confirm modal is open, dismiss the modal
+      if (showSubmitConfirmRef.current) {
+        setShowSubmitConfirm(false)
+        return
+      }
+      // 3. If exit confirm modal is open, dismiss the modal
+      if (showExitConfirmRef.current) {
+        setShowExitConfirm(false)
+        return
+      }
+      // 4. Otherwise, if in active test, confirm before leaving
       if (isActiveRef.current) {
         setShowExitConfirm(true)
       } else {
@@ -364,7 +395,7 @@ export function TestMode({ cards, title, settings, onComplete, onExit }: TestMod
       }
     })
     return () => {
-      listenerPromise.then((handle) => handle.remove())
+      listenerPromise.then((handle) => handle.remove()).catch(() => {})
     }
   }, [onExit])
 

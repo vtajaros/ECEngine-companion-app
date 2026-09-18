@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { X } from 'lucide-react'
+import { App as CapacitorApp } from '@capacitor/app'
 
 export interface ImageLightboxProps {
   src: string | null
@@ -24,6 +25,12 @@ export function ImageLightbox({ src, alt = 'Diagram', onClose }: ImageLightboxPr
   const lastTapPosRef = useRef<{ x: number; y: number } | null>(null)
   const hasMovedSignificantlyRef = useRef<boolean>(false)
 
+  const handleClose = useCallback(() => {
+    setScale(1)
+    setTranslate({ x: 0, y: 0 })
+    onClose()
+  }, [onClose])
+
   // Reset zoom and pan whenever src changes or lightbox opens
   useEffect(() => {
     if (src) {
@@ -36,13 +43,28 @@ export function ImageLightbox({ src, alt = 'Diagram', onClose }: ImageLightboxPr
     }
   }, [src])
 
-  if (!src) return null
+  // Intercept Android hardware/gesture back button & keyboard Escape key
+  useEffect(() => {
+    if (!src) return
 
-  const handleClose = () => {
-    setScale(1)
-    setTranslate({ x: 0, y: 0 })
-    onClose()
-  }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+
+    const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      handleClose()
+    })
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      listenerPromise.then((handle) => handle.remove()).catch(() => {})
+    }
+  }, [src, handleClose])
+
+  if (!src) return null
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()

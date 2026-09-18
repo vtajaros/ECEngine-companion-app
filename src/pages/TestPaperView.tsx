@@ -209,11 +209,11 @@ const MCQTableRow = memo(function MCQTableRow({
     <tr style={{ borderBottom: '1px solid var(--pt-border)' }}>
       <td style={{ padding: '10px 12px', verticalAlign: 'top', width: '65%', overflow: 'hidden' }}>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <span style={{ fontWeight: 700, color: 'var(--pt-text-primary)', flexShrink: 0, fontSize: '13px' }}>
+          <span style={{ fontWeight: 700, color: 'var(--pt-text-primary)', flexShrink: 0, fontSize: '15px' }}>
             {index}.
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ color: 'var(--pt-text-primary)', margin: '0 0 8px 0', fontSize: '13px', lineHeight: 1.5 }}>
+            <p style={{ fontWeight: 600, color: 'var(--pt-text-primary)', margin: '0 0 8px 0', fontSize: '15px', lineHeight: 1.45 }}>
               <MathText text={question} />
             </p>
 
@@ -239,7 +239,7 @@ const MCQTableRow = memo(function MCQTableRow({
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                 gap: '4px 8px',
-                fontSize: '12px',
+                fontSize: '14px',
               }}
             >
               {[0, 1, 2, 3].map((ci) => {
@@ -250,17 +250,19 @@ const MCQTableRow = memo(function MCQTableRow({
                   <div
                     key={ci}
                     style={{
-                      padding: '3px 6px',
+                      padding: '4px 8px',
                       backgroundColor: isCorrectChoice ? 'var(--pt-answer-bg)' : 'transparent',
                       color: isCorrectChoice ? 'var(--pt-answer-text)' : 'var(--pt-text-body)',
-                      fontWeight: isCorrectChoice ? 700 : 400,
+                      fontWeight: isCorrectChoice ? 700 : 500,
+                      fontSize: '14px',
+                      lineHeight: 1.4,
                       borderRadius: '3px',
                       display: 'flex',
-                      gap: '4px',
+                      gap: '6px',
                       alignItems: 'baseline',
                     }}
                   >
-                    <span style={{ minWidth: '16px', fontWeight: 700, flexShrink: 0 }}>
+                    <span style={{ minWidth: '20px', fontWeight: 700, flexShrink: 0 }}>
                       {CHOICE_LABELS[ci]}.
                     </span>
                     <span>
@@ -301,7 +303,7 @@ const MCQTableRow = memo(function MCQTableRow({
             <span
               style={{
                 fontWeight: 700,
-                fontSize: '11px',
+                fontSize: '12px',
                 color: 'var(--pt-text-primary)',
                 display: 'block',
                 marginBottom: '4px',
@@ -330,9 +332,9 @@ const MCQTableRow = memo(function MCQTableRow({
               <p
                 style={{
                   margin: 0,
-                  fontSize: '12px',
+                  fontSize: '14.5px',
                   color: 'var(--pt-text-body)',
-                  lineHeight: 1.5,
+                  lineHeight: 1.55,
                   whiteSpace: 'pre-wrap',
                 }}
               >
@@ -381,16 +383,16 @@ const MCQGlossaryItem = memo(function MCQGlossaryItem({
         <div
           style={{
             display: 'flex',
-            gap: '6px',
-            fontWeight: 500,
+            gap: '8px',
+            fontWeight: 600,
             color: 'var(--pt-text-primary)',
-            marginBottom: '4px',
-            fontSize: '13px',
-            lineHeight: 1.5,
+            marginBottom: '6px',
+            fontSize: '15.5px',
+            lineHeight: 1.45,
           }}
         >
-          <span style={{ flexShrink: 0, fontWeight: 700 }}>{index}.</span>
-          <span>
+          <span style={{ flexShrink: 0, minWidth: '24px', fontWeight: 700 }}>{index}.</span>
+          <span style={{ flex: 1 }}>
             <MathText text={question} />
           </span>
         </div>
@@ -420,7 +422,7 @@ const MCQGlossaryItem = memo(function MCQGlossaryItem({
               color: 'var(--pt-text-body)',
               margin: 0,
               paddingLeft: '16px',
-              fontSize: '13px',
+              fontSize: '14.5px',
             }}
           >
             <MathText text={choices[answer] ?? '—'} plainText={choicesPlainText?.[answer]} />
@@ -444,11 +446,11 @@ const MCQGlossaryItem = memo(function MCQGlossaryItem({
             <span
               style={{
                 fontWeight: 700,
-                fontSize: '11px',
+                fontSize: '13px',
                 color: 'var(--pt-text-primary)',
                 display: 'block',
                 marginBottom: '4px',
-                letterSpacing: '0.05em',
+                letterSpacing: '0.08em',
               }}
             >
               SOLUTION:
@@ -473,9 +475,9 @@ const MCQGlossaryItem = memo(function MCQGlossaryItem({
               <p
                 style={{
                   margin: 0,
-                  fontSize: '12px',
+                  fontSize: '13.5px',
                   color: 'var(--pt-text-body)',
-                  lineHeight: 1.5,
+                  lineHeight: 1.55,
                   whiteSpace: 'pre-wrap',
                 }}
               >
@@ -500,16 +502,16 @@ const MCQGlossaryItem = memo(function MCQGlossaryItem({
       <div
         style={{
           display: 'flex',
-          gap: '6px',
+          gap: '8px',
           fontWeight: 600,
           color: 'var(--pt-text-primary)',
-          marginBottom: '6px',
-          fontSize: '13px',
-          lineHeight: 1.5,
+          marginBottom: '8px',
+          fontSize: '15.5px',
+          lineHeight: 1.45,
         }}
       >
-        <span style={{ flexShrink: 0, fontWeight: 700 }}>{index}.</span>
-        <span>
+        <span style={{ flexShrink: 0, minWidth: '24px', fontWeight: 700 }}>{index}.</span>
+        <span style={{ flex: 1 }}>
           <MathText text={question} />
         </span>
       </div>
@@ -524,7 +526,6 @@ const MCQGlossaryItem = memo(function MCQGlossaryItem({
             maxHeight: '200px',
             objectFit: 'contain',
             marginBottom: '6px',
-            marginLeft: '16px',
             borderRadius: '4px',
             border: '1px solid var(--pt-border-light)',
             display: 'block',
@@ -536,10 +537,10 @@ const MCQGlossaryItem = memo(function MCQGlossaryItem({
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '4px 8px',
-          marginTop: '8px',
+          gap: '4px 12px',
+          marginTop: '10px',
           paddingLeft: '16px',
-          fontSize: '12px',
+          fontSize: '14.5px',
         }}
       >
         {[0, 1, 2, 3].map((ci) => {
@@ -553,14 +554,16 @@ const MCQGlossaryItem = memo(function MCQGlossaryItem({
                 padding: '4px 8px',
                 backgroundColor: isCorrectChoice ? 'var(--pt-answer-bg)' : 'transparent',
                 color: isCorrectChoice ? 'var(--pt-answer-text)' : 'var(--pt-text-body)',
-                fontWeight: isCorrectChoice ? 700 : 400,
+                fontWeight: isCorrectChoice ? 700 : 500,
+                fontSize: '14.5px',
+                lineHeight: 1.4,
                 borderRadius: '3px',
                 display: 'flex',
                 gap: '6px',
                 alignItems: 'baseline',
               }}
             >
-              <span style={{ minWidth: '16px', fontWeight: 700, flexShrink: 0 }}>
+              <span style={{ minWidth: '20px', fontWeight: 700, flexShrink: 0 }}>
                 {CHOICE_LABELS[ci]}.
               </span>
               <span>
@@ -574,8 +577,8 @@ const MCQGlossaryItem = memo(function MCQGlossaryItem({
       {hasSolution && (
         <div
           style={{
-            marginTop: '10px',
-            paddingTop: '8px',
+            marginTop: '12px',
+            paddingTop: '10px',
             paddingLeft: '16px',
             borderTop: '1px dashed var(--pt-border-light)',
           }}
@@ -583,11 +586,11 @@ const MCQGlossaryItem = memo(function MCQGlossaryItem({
           <span
             style={{
               fontWeight: 700,
-              fontSize: '11px',
+              fontSize: '13px',
               color: 'var(--pt-text-primary)',
               display: 'block',
-              marginBottom: '4px',
-              letterSpacing: '0.05em',
+              marginBottom: '6px',
+              letterSpacing: '0.08em',
             }}
           >
             SOLUTION:
@@ -612,9 +615,9 @@ const MCQGlossaryItem = memo(function MCQGlossaryItem({
             <p
               style={{
                 margin: 0,
-                fontSize: '12px',
+                fontSize: '13.5px',
                 color: 'var(--pt-text-body)',
-                lineHeight: 1.5,
+                lineHeight: 1.55,
                 whiteSpace: 'pre-wrap',
               }}
             >
@@ -688,7 +691,7 @@ const FormulaItem = memo(function FormulaItem({ index, card, onZoom }: FormulaIt
       {latex && (
         <div
           style={{
-            fontFamily: 'monospace',
+            fontFamily: "'JetBrains Mono', monospace",
             backgroundColor: 'var(--pt-formula-bg)',
             border: '1px solid var(--pt-formula-border, transparent)',
             padding: '10px 14px',
@@ -788,7 +791,7 @@ export function TestPaperView({
       onExit()
     })
     return () => {
-      listenerPromise.then((handle) => handle.remove())
+      listenerPromise.then((handle) => handle.remove()).catch(() => {})
     }
   }, [onExit])
 
@@ -1028,7 +1031,9 @@ export function TestPaperView({
               ...activeThemeVars,
               backgroundColor: activeThemeVars['--pt-bg-paper'],
               color: activeThemeVars['--pt-text-primary'],
-              fontFamily: 'Georgia, "Times New Roman", serif',
+              fontFamily: "'Rajdhani', sans-serif",
+              fontSize: '17px',
+              lineHeight: 1.5,
             } as React.CSSProperties}
           >
             {/* Paper Header */}
@@ -1267,7 +1272,7 @@ export function TestPaperView({
                                   style={{
                                     color: 'var(--pt-text-primary)',
                                     margin: 0,
-                                    fontSize: '13px',
+                                    fontSize: '17px',
                                     fontWeight: boldSide === 'term' ? 700 : 400,
                                   }}
                                 >
@@ -1303,7 +1308,7 @@ export function TestPaperView({
                                   style={{
                                     color: 'var(--pt-text-body)',
                                     margin: 0,
-                                    fontSize: '13px',
+                                    fontSize: '17px',
                                     fontWeight: boldSide === 'definition' ? 700 : 400,
                                   }}
                                 >
@@ -1334,7 +1339,7 @@ export function TestPaperView({
                               fontWeight: boldSide === 'term' ? 700 : 400,
                               color: 'var(--pt-text-primary)',
                               marginBottom: '4px',
-                              fontSize: '13px',
+                              fontSize: '17px',
                             }}
                           >
                             <MathText text={front} />
@@ -1377,7 +1382,7 @@ export function TestPaperView({
                             style={{
                               paddingLeft: '16px',
                               color: 'var(--pt-text-body)',
-                              fontSize: '13px',
+                              fontSize: '17px',
                             }}
                           >
                             {imageBack && (
