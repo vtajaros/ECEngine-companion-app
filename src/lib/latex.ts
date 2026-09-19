@@ -56,7 +56,7 @@ export const protectCurrencyAndEscapedDollars = (text: string): string => {
   // A dollar sign directly preceding digits (e.g. $500,000 or $25,000) is currency if:
   // - It has no matching closing $ on the same line, OR
   // - The text between it and the next $ contains English prose words (e.g. "$500,000, but the cost was $150,000")
-  const dollarRegex = /(^|[\s(\[{,;:])(?<!\$)\$(?!\$)(?=\s?\d[\d,]*(?:\.\d+)?(?:[kKmMbBtT])?\b)/g
+  const dollarRegex = /(^|[\s([{,;:])(?<!\$)\$(?!\$)(?=\s?\d[\d,]*(?:\.\d+)?(?:[kKmMbBtT])?\b)/g
 
   let match: RegExpExecArray | null
   while ((match = dollarRegex.exec(result)) !== null) {
@@ -191,8 +191,8 @@ function applyInlineFormatting(text: string): string {
 
   // Subscript: _{multi}, _(...) (parenthesized group),
   // or _x (single non-space char or number with optional sign/decimal)
-  result = result.replace(/\_\{([^}]+)\}/g, '<sub>$1</sub>')
-  result = result.replace(/\_\(([^)]*)\)/g, '<sub>($1)</sub>')
+  result = result.replace(/_{([^}]+)}/g, '<sub>$1</sub>')
+  result = result.replace(/_\(([^)]*)\)/g, '<sub>($1)</sub>')
   result = result.replace(/(?<!\*\*?)(?<!_)_(?!\*\*?)([+-]?\d+(?:\.\d+)?|[^\s_{(])/g, '<sub>$1</sub>')
 
   return result
@@ -270,7 +270,7 @@ export const renderMath = (text: string): string => {
     .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
 
   // Protect currency amounts ($500,000, $150) and escaped dollars (\$)
-  let t = protectCurrencyAndEscapedDollars(normalized)
+  const t = protectCurrencyAndEscapedDollars(normalized)
 
   // ── Path A: pure raw LaTeX with no $ delimiters ──
   // Only render the entire string with KaTeX if it is purely a math expression.

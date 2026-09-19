@@ -55,6 +55,7 @@ export function FlashcardSession({
   const { speak, stop } = useTTS()
   const [rawCards, setRawCards] = useState<Card[]>([])
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set())
+  const [sessionBookmarks, setSessionBookmarks] = useState<Set<string>>(new Set())
   const [settings, setSettings] = useState<FlashcardSettings>(
     initialSettings ? { ...initialSettings } : { ...DEFAULT_FLASHCARD_SETTINGS }
   )
@@ -63,20 +64,18 @@ export function FlashcardSession({
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isFlipped, setIsFlipped] = useState(false)
   const [explanationOpen, setExplanationOpen] = useState(false)
-  const [showContextToast, setShowContextToast] = useState(false)
+  const [isCompleted, setIsCompleted] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const lightboxSrcRef = useRef<string | null>(null)
   useEffect(() => {
     lightboxSrcRef.current = lightboxSrc
   }, [lightboxSrc])
 
-  const [isCompleted, setIsCompleted] = useState(false)
-
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  // Exit confirmation modal state
   const [showExitConfirm, setShowExitConfirm] = useState(false)
+  const [showContextToast, setShowContextToast] = useState(false)
+
   const showExitConfirmRef = useRef(showExitConfirm)
   useEffect(() => {
     showExitConfirmRef.current = showExitConfirm
@@ -140,6 +139,7 @@ export function FlashcardSession({
         const targetCards = allCards.filter((c) => c.type === cardType)
         setRawCards(targetCards)
         setBookmarkedIds(savedBookmarks)
+        setSessionBookmarks(savedBookmarks)
         setCurrentIndex(0)
         setIsFlipped(false)
         setExplanationOpen(false)
@@ -164,13 +164,13 @@ export function FlashcardSession({
   const activeCards = useMemo(() => {
     let list = rawCards
     if (settings.bookmarkedOnly) {
-      list = list.filter((c) => bookmarkedIds.has(c.id))
+      list = list.filter((c) => sessionBookmarks.has(c.id))
     }
     if (settings.shuffleCards) {
       list = shuffleArray(list)
     }
     return list
-  }, [rawCards, settings.bookmarkedOnly, settings.shuffleCards, bookmarkedIds])
+  }, [rawCards, settings.bookmarkedOnly, settings.shuffleCards, sessionBookmarks])
 
   const currentCard = activeCards[currentIndex]
   const isCurrentCardBookmarked = currentCard ? bookmarkedIds.has(currentCard.id) : false
@@ -591,7 +591,10 @@ Provide a thorough explanation covering ALL of the following:
         isOpen={showSettingsModal}
         cardCount={rawCards.length}
         settings={settings}
-        onSettingsChange={setSettings}
+        onSettingsChange={(newSettings) => {
+          setSettings(newSettings)
+          setSessionBookmarks(bookmarkedIds)
+        }}
         onStart={() => setShowSettingsModal(false)}
         onClose={() => setShowSettingsModal(false)}
         cardType={cardType}

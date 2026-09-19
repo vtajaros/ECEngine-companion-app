@@ -399,58 +399,69 @@ export function TestMode({ cards, title, settings, onComplete, onExit }: TestMod
     }
   }, [onExit])
 
-  // Load bookmarks on mount
-  useEffect(() => {
-    bookmarkService.getAll().then(setBookmarkedIds)
-  }, [])
+  const isDeckInitializedRef = useRef(false)
 
   // Initialize test cards from input props and settings
   useEffect(() => {
-    // 1. Filter to MCQ cards only (no flashcard generation)
-    let filtered = cards.filter((c) => c.type === 'mcq')
+    let isCancelled = false
 
-    // 2. Filter by bookmarks if requested
-    if (settings.bookmarkedOnly) {
-      filtered = filtered.filter((c) => bookmarkedIds.has(c.id))
-    }
+    if (isDeckInitializedRef.current) return
+    if (cards.length === 0) return
 
-    // 3. Shuffle questions if requested
-    if (settings.shuffleQuestions) {
-      filtered = shuffle(filtered)
-    }
+    bookmarkService.getAll().then((savedBookmarks) => {
+      if (isCancelled) return
+      setBookmarkedIds(savedBookmarks)
 
-    // 4. Shuffle choices if requested
-    if (settings.shuffleChoices) {
-      filtered = filtered.map((card) => {
-        const mcq = card.data as MCQData
-        if (mcq?.choices && isSafeToShuffleChoices(mcq.choices)) {
-          const sc = shuffleChoices(mcq.choices, mcq.answer, mcq.choicesPlainText)
-          return {
-            ...card,
-            data: {
-              ...mcq,
-              choices: sc.choices,
-              answer: sc.answer,
-              ...(sc.choicesPlainText ? { choicesPlainText: sc.choicesPlainText } : {}),
-            },
-          }
-        }
-        return card
-      })
-    }
+      // 1. Filter to MCQ cards only (no flashcard generation)
+      let filtered = cards.filter((c) => c.type === 'mcq')
 
-    // 5. Apply item count / sampling if configured
-    if (typeof settings.itemCount === 'number' && filtered.length > settings.itemCount) {
-      if (settings.randomSample) {
-        filtered = weightedSample(filtered, settings.itemCount)
-      } else {
-        filtered = plainSample(filtered, settings.itemCount)
+      // 2. Filter by bookmarks if requested
+      if (settings.bookmarkedOnly) {
+        filtered = filtered.filter((c) => savedBookmarks.has(c.id))
       }
-    }
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize test deck on mount/settings change
-    setTestCards(filtered)
-  }, [cards, settings, bookmarkedIds])
+      // 3. Shuffle questions if requested
+      if (settings.shuffleQuestions) {
+        filtered = shuffle(filtered)
+      }
+
+      // 4. Shuffle choices if requested
+      if (settings.shuffleChoices) {
+        filtered = filtered.map((card) => {
+          const mcq = card.data as MCQData
+          if (mcq?.choices && isSafeToShuffleChoices(mcq.choices)) {
+            const sc = shuffleChoices(mcq.choices, mcq.answer, mcq.choicesPlainText)
+            return {
+              ...card,
+              data: {
+                ...mcq,
+                choices: sc.choices,
+                answer: sc.answer,
+                ...(sc.choicesPlainText ? { choicesPlainText: sc.choicesPlainText } : {}),
+              },
+            }
+          }
+          return card
+        })
+      }
+
+      // 5. Apply item count / sampling if configured
+      if (typeof settings.itemCount === 'number' && filtered.length > settings.itemCount) {
+        if (settings.randomSample) {
+          filtered = weightedSample(filtered, settings.itemCount)
+        } else {
+          filtered = plainSample(filtered, settings.itemCount)
+        }
+      }
+
+      setTestCards(filtered)
+      isDeckInitializedRef.current = true
+    })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [cards, settings])
 
   // Lazy resolve images for test cards
   useEffect(() => {

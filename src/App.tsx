@@ -275,6 +275,7 @@ function App() {
       {activeSession && activeSession.mode === 'test' && (
         <Suspense fallback={<SessionFallback />}>
           <TestMode
+            key={activeSession.topicId}
             cards={testCards}
             title={activeSession.topicName}
             settings={memoizedTestSettings ?? DEFAULT_TEST_SETTINGS}
