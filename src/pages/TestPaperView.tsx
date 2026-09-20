@@ -1039,8 +1039,9 @@ export function TestPaperView({
             {/* Paper Header */}
             <div style={{ marginBottom: '24px', textAlign: 'center' }}>
               <h1
+                className="break-words"
                 style={{
-                  fontSize: '20px',
+                  fontSize: '24px',
                   fontWeight: 700,
                   color: 'var(--pt-text-primary)',
                   textTransform: 'uppercase',

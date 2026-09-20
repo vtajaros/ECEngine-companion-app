@@ -243,6 +243,19 @@ function parseFolderRow(row: z.infer<typeof FolderRowSchema>): Folder {
   }
 }
 
+/**
+ * Card data fields that can hold an image filename across all card types.
+ */
+const IMAGE_DATA_KEYS = [
+  'image',
+  'imagePath',
+  'imageFront',
+  'imageBack',
+  'imagePathFront',
+  'solutionImagePath',
+  'explanationImagePath',
+] as const
+
 // ── Service Implementation ──────────────────────────────────────────────────
 
 export const dbService = {
@@ -304,7 +317,7 @@ export const dbService = {
       FROM cards c
       LEFT JOIN progress p ON c.id = p.card_id
       WHERE c.topic_id = ?
-      ORDER BY c.order_index ASC
+      ORDER BY c.order_index ASC, c.created_at ASC
     `
     const rows = await executeQuery(sql, [topicId])
     return z.array(CardWithProgressRowSchema).parse(rows).map(row => parseCardRow(row, topicId))
@@ -325,7 +338,7 @@ export const dbService = {
         FROM cards c
         LEFT JOIN progress p ON c.id = p.card_id
         WHERE c.topic_id = ?
-        ORDER BY c.order_index ASC
+        ORDER BY c.order_index ASC, c.created_at ASC
       `
       params = [topicId]
     } else {
@@ -335,7 +348,7 @@ export const dbService = {
           p.ease_factor, p.interval, p.repetitions, p.next_review, p.last_reviewed, p.correct_count, p.total_count, p.last_result
         FROM cards c
         LEFT JOIN progress p ON c.id = p.card_id
-        ORDER BY c.order_index ASC
+        ORDER BY c.order_index ASC, c.created_at ASC
       `
     }
 
@@ -352,9 +365,35 @@ export const dbService = {
         id, topic_id, type, data, difficulty, tags, is_custom, order_index, created_at
       FROM cards
       WHERE topic_id = ?
-      ORDER BY order_index ASC
+      ORDER BY order_index ASC, created_at ASC
     `
     const rows = await executeQuery(sql, [topicId])
     return z.array(CardRowSchema).parse(rows).map(row => parseCardRow(row, topicId))
+  },
+
+  /**
+   * Retrieves all image filenames referenced in card payloads along with their cardId.
+   */
+  getImageReferences: async (): Promise<{ cardId: string; filename: string }[]> => {
+    const rows = await executeQuery<{ id: string; data: string }>('SELECT id, data FROM cards')
+    const references: { cardId: string; filename: string }[] = []
+
+    for (const row of rows) {
+      try {
+        const parsed = JSON.parse(row.data)
+        if (parsed && typeof parsed === 'object') {
+          for (const key of IMAGE_DATA_KEYS) {
+            const val = (parsed as Record<string, unknown>)[key]
+            if (typeof val === 'string' && val.trim() !== '') {
+              references.push({ cardId: row.id, filename: val.trim() })
+            }
+          }
+        }
+      } catch {
+        // Skip corrupt rows silently
+      }
+    }
+
+    return references
   },
 }

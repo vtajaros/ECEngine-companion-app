@@ -25,6 +25,7 @@ import {
 import { importDatabaseFile, UserCancelledError as DbUserCancelledError } from '../services/import.service'
 import { openDatabase } from '../services/db.service'
 import { ConfirmModal } from '../components/ConfirmModal'
+import { checkMissingImages, MissingImagesReport } from '../services/image-check.service'
 import { GROQ_API_KEY_PREF } from '../config/app-config'
 import { App as CapacitorApp } from '@capacitor/app'
 
@@ -36,6 +37,31 @@ interface GroqUsageSnapshot {
   remainingTokens: string | null
   resetTokens: string | null
   fetchedAt: number
+}
+
+function formatMissingImagesReport(
+  report: MissingImagesReport
+): { message: string; type: 'success' | 'warning' } | null {
+  const { referencedCount, missingCount, cardsAffected } = report
+  if (referencedCount === 0) {
+    return null
+  }
+  if (missingCount === 0) {
+    return {
+      message: `All ${referencedCount.toLocaleString()} referenced images are present.`,
+      type: 'success',
+    }
+  }
+  if (missingCount === referencedCount) {
+    return {
+      message: `${referencedCount.toLocaleString()} images are referenced by your cards, but no images are imported yet.`,
+      type: 'warning',
+    }
+  }
+  return {
+    message: `${missingCount.toLocaleString()} of ${referencedCount.toLocaleString()} referenced images are missing (${cardsAffected.toLocaleString()} cards affected). Import your latest ece-images.zip.`,
+    type: 'warning',
+  }
 }
 
 export interface SettingsProps {
@@ -55,9 +81,11 @@ export function Settings({ onClose, onDatabaseImported }: SettingsProps) {
   const [importProgress, setImportProgress] = useState<ImportImagesProgress | null>(null)
   const [imageError, setImageError] = useState<string | null>(null)
   const [imageSuccess, setImageSuccess] = useState<string | null>(null)
+  const [imageReport, setImageReport] = useState<{ message: string; type: 'success' | 'warning' } | null>(null)
 
   const [isReimporting, setIsReimporting] = useState(false)
   const [reimportError, setReimportError] = useState<string | null>(null)
+  const [reimportReport, setReimportReport] = useState<{ message: string; type: 'success' | 'warning' } | null>(null)
   const [showReimportConfirm, setShowReimportConfirm] = useState(false)
 
   const refreshImageCount = async () => {
@@ -140,6 +168,7 @@ export function Settings({ onClose, onDatabaseImported }: SettingsProps) {
     setIsImportingImages(true)
     setImageError(null)
     setImageSuccess(null)
+    setImageReport(null)
     setImportProgress(null)
 
     try {
@@ -147,8 +176,18 @@ export function Settings({ onClose, onDatabaseImported }: SettingsProps) {
         setImportProgress(progress)
       })
       await refreshImageCount()
-      setImageSuccess(`Imported ${result.importedCount} images (${result.skippedCount} skipped)`)
+      setImageSuccess(
+        `Imported ${result.importedCount} images (${result.unchangedCount} already present, ${result.skippedCount} skipped)`
+      )
       setTimeout(() => setImageSuccess(null), 3500)
+
+      try {
+        const report = await checkMissingImages()
+        console.info('[image-check]', report)
+        setImageReport(formatMissingImagesReport(report))
+      } catch (checkErr) {
+        console.warn('[image-check] Failed to check missing images:', checkErr)
+      }
     } catch (err: unknown) {
       if (err instanceof ImageUserCancelledError) {
         // User closed picker; ignore
@@ -171,6 +210,7 @@ export function Settings({ onClose, onDatabaseImported }: SettingsProps) {
     }
 
     setIsImportingImages(true)
+    setImageReport(null)
     try {
       await clearImportedImages()
       await refreshImageCount()
@@ -186,10 +226,20 @@ export function Settings({ onClose, onDatabaseImported }: SettingsProps) {
   const handleReimportDatabase = async () => {
     setIsReimporting(true)
     setReimportError(null)
+    setReimportReport(null)
     try {
       const resolvedPath = await importDatabaseFile()
       await openDatabase(resolvedPath)
       onDatabaseImported()
+      await refreshImageCount()
+
+      try {
+        const report = await checkMissingImages()
+        console.info('[image-check]', report)
+        setReimportReport(formatMissingImagesReport(report))
+      } catch (checkErr) {
+        console.warn('[image-check] Failed to check missing images:', checkErr)
+      }
     } catch (err: unknown) {
       if (err instanceof DbUserCancelledError) {
         return
@@ -494,6 +544,21 @@ export function Settings({ onClose, onDatabaseImported }: SettingsProps) {
                 </div>
               )}
 
+              {imageReport && (
+                <div
+                  className={`text-xs font-mono flex items-start gap-1.5 animate-in fade-in ${
+                    imageReport.type === 'warning' ? 'text-amber-400' : 'text-[#00ff41]'
+                  }`}
+                >
+                  {imageReport.type === 'warning' ? (
+                    <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                  ) : (
+                    <CheckCircle2 size={14} className="shrink-0 mt-0.5" />
+                  )}
+                  <span>{imageReport.message}</span>
+                </div>
+              )}
+
               {imageError && (
                 <div className="text-xs font-mono text-red-400 flex items-center gap-1.5 animate-in fade-in">
                   <AlertTriangle size={14} />
@@ -555,6 +620,21 @@ export function Settings({ onClose, onDatabaseImported }: SettingsProps) {
                 </button>
               </div>
 
+              {reimportReport && (
+                <div
+                  className={`text-xs font-mono flex items-start gap-1.5 animate-in fade-in ${
+                    reimportReport.type === 'warning' ? 'text-amber-400' : 'text-[#00ff41]'
+                  }`}
+                >
+                  {reimportReport.type === 'warning' ? (
+                    <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                  ) : (
+                    <CheckCircle2 size={14} className="shrink-0 mt-0.5" />
+                  )}
+                  <span>{reimportReport.message}</span>
+                </div>
+              )}
+
               {reimportError && (
                 <div className="text-xs font-mono text-red-400 flex items-center gap-1.5 animate-in fade-in">
                   <AlertTriangle size={14} />
@@ -569,7 +649,7 @@ export function Settings({ onClose, onDatabaseImported }: SettingsProps) {
 
       <ConfirmModal
         isOpen={showReimportConfirm}
-        variant="default"
+        variant="danger"
         title="Replace Database?"
         message="This will replace your currently loaded question bank with a new database file. This cannot be undone."
         confirmLabel="Reimport"

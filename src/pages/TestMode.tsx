@@ -572,10 +572,10 @@ export function TestMode({ cards, title, settings, onComplete, onExit }: TestMod
     onComplete?.({
       score: correct,
       total: testCards.length,
-      bookmarked: bookmarkedIds.size,
+      bookmarked: testCards.filter((c) => bookmarkedIds.has(c.id)).length,
       correctIds,
     })
-  }, [testCards, answers, bookmarkedIds.size, onComplete, play])
+  }, [testCards, answers, bookmarkedIds, onComplete, play])
 
   // Get context for LLM
   const handleGetContext = useCallback(async (mcq: MCQData) => {
