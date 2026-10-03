@@ -15,7 +15,10 @@ import {
   ArrowUpDown,
   Check,
   Star,
+  Swords,
 } from 'lucide-react'
+import { GauntletArcadeHome } from '../components/gauntlet/GauntletArcadeHome'
+import type { GauntletArcadeConfig } from '../lib/gauntlet'
 import { getFavoriteOverrides, isTopicFavorite, toggleTopicFavorite, FavoriteOverrides } from '../services/favorites.service'
 import { openDatabase, dbService, TopicWithCardCount, getPreviouslyImportedDbPath, Folder } from '../services/db.service'
 import { importDatabaseFile, UserCancelledError } from '../services/import.service'
@@ -27,7 +30,7 @@ import { FolderDrawer } from '../components/FolderDrawer'
 import type { TestSettings } from '../pages/TestMode'
 import appIcon from '../assets/images/ecengine-icon.png'
 
-export type BrowserMode = 'looksfam' | 'test' | 'testpaper' | 'flashcards' | 'formulas'
+export type BrowserMode = 'looksfam' | 'test' | 'testpaper' | 'flashcards' | 'formulas' | 'gauntlet'
 export type DeckType = 'mcq' | 'flashcard' | 'formula' | 'mixed' | null
 
 /**
@@ -73,7 +76,7 @@ function formatTypeChip(type: string): string {
   }
 }
 
-const SUBJECT_ORDER = ['MATH', 'ELECS', 'GEAS', 'EST']
+const SUBJECT_ORDER = ['MATH', 'GEAS', 'ELECS', 'EST']
 
 type SortMode = 'date-desc' | 'date-asc' | 'name-asc' | 'name-desc'
 
@@ -488,6 +491,7 @@ export interface TopicBrowserProps {
     testSettings?: TestSettings,
     flashcardSettings?: FlashcardSettings
   ) => void
+  onStartGauntlet?: (config: GauntletArcadeConfig) => void
   onOpenSettings?: () => void
 }
 
@@ -505,6 +509,7 @@ export function TopicBrowser({
   scrollPosition,
   onScrollPositionChange,
   onSelectTopic,
+  onStartGauntlet,
   onOpenSettings,
 }: TopicBrowserProps = {}) {
   const [localMode, setLocalMode] = useState<BrowserMode>('looksfam')
@@ -953,8 +958,18 @@ export function TopicBrowser({
 
   return (
     <div ref={browserContainerRef} className="h-full flex flex-col bg-neutral-950 text-neutral-50 overflow-y-auto">
-      {/* Header */}
-      <header className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-md px-4 py-3 sm:px-6">
+      {mode === 'gauntlet' ? (
+        <div className="flex-1 pb-20">
+          <GauntletArcadeHome
+            cardCount={topics.reduce((acc, t) => acc + t.cardCount, 0)}
+            onStartRun={(cfg) => onStartGauntlet?.(cfg)}
+            onExit={() => setMode('looksfam')}
+          />
+        </div>
+      ) : (
+        <>
+          {/* Header */}
+          <header className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-md px-4 py-3 sm:px-6">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img
@@ -1213,6 +1228,8 @@ export function TopicBrowser({
           )}
         </div>
       </main>
+    </>
+  )}
 
       {/* Bottom Tab Bar — Flashcards | LooksFam | Formulas, plain style */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-neutral-800/90 bg-neutral-950/95 backdrop-blur-md pb-[env(safe-area-inset-bottom,0px)]">
@@ -1263,6 +1280,22 @@ export function TopicBrowser({
               className={mode === 'formulas' ? 'drop-shadow-[0_0_8px_rgba(0,255,65,0.4)]' : ''}
             />
             <span className="text-[11px] tracking-tight">Formulas</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => startTransition(() => setMode('gauntlet'))}
+            className={`flex flex-1 flex-col items-center gap-1 py-1 text-xs font-medium transition-all active:scale-95 ${
+              mode === 'gauntlet'
+                ? 'text-amber-400'
+                : 'text-neutral-400 hover:text-neutral-200'
+            }`}
+          >
+            <Swords
+              size={20}
+              className={mode === 'gauntlet' ? 'drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]' : ''}
+            />
+            <span className="text-[11px] tracking-tight">Gauntlet</span>
           </button>
         </div>
       </nav>

@@ -56,7 +56,18 @@ export function shuffleChoices(
       .map((c, i) => ({ choice: c, originalIndex: i }))
       .filter(s => s.originalIndex !== pinnedIndex)
     
-    const shuffledOthers = shuffleArray(others)
+    let shuffledOthers = shuffleArray(others)
+    if (others.length > 1 && shuffledOthers.every((s, i) => s.originalIndex === others[i].originalIndex)) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        shuffledOthers = shuffleArray(others)
+        if (!shuffledOthers.every((s, i) => s.originalIndex === others[i].originalIndex)) break
+      }
+      if (shuffledOthers.every((s, i) => s.originalIndex === others[i].originalIndex)) {
+        const temp = shuffledOthers[0]
+        shuffledOthers[0] = shuffledOthers[1]
+        shuffledOthers[1] = temp
+      }
+    }
     
     // Reconstruct the array: shuffled others + pinned at the end
     const newChoices = [...shuffledOthers.map(s => s.choice), pinnedChoice]
@@ -81,7 +92,18 @@ export function shuffleChoices(
 
   // Build indexed pairs so we can track which slot went where
   const indexed = choices.map((c, i) => ({ choice: c, originalIndex: i }))
-  const shuffled = shuffleArray(indexed)
+  let shuffled = shuffleArray(indexed)
+  if (indexed.length > 1 && shuffled.every((s, i) => s.originalIndex === i)) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      shuffled = shuffleArray(indexed)
+      if (!shuffled.every((s, i) => s.originalIndex === i)) break
+    }
+    if (shuffled.every((s, i) => s.originalIndex === i)) {
+      const temp = shuffled[0]
+      shuffled[0] = shuffled[1]
+      shuffled[1] = temp
+    }
+  }
   const newChoices = shuffled.map(s => s.choice)
   const newAnswer = shuffled.findIndex(s => s.originalIndex === answerIndex)
   const result: { choices: string[]; answer: number; choicesPlainText?: boolean[] } = {

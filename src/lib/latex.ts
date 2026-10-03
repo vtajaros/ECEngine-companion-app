@@ -167,6 +167,32 @@ function renderSegment(segment: string): string {
 }
 
 /**
+ * Auto-braces unbraced multi-character subscripts and superscripts in LaTeX / math text
+ * so that long word/multi-digit subscripts (like H_products, V_gs, x_10, r^3a) render correctly.
+ *
+ * Examples:
+ *   H_products   -> H_{products}
+ *   H_reactants  -> H_{reactants}
+ *   V_gs         -> V_{gs}
+ *   x^10         -> x^{10}
+ *
+ * Ignores escaped characters (\_), already-braced subscripts (_{...}), and LaTeX commands (_\frac).
+ */
+export const normalizeLatexSubscriptsAndSuperscripts = (text: string): string => {
+  if (!text || typeof text !== 'string') return ''
+
+  // Replace unbraced multi-character word subscripts (e.g. _products, _reactants, _gs)
+  // or multi-digit subscripts (e.g. _10, _123) with length >= 2.
+  // Requires word identifier starting with letter, or 2+ digits (does not group digit-then-letter like 2y).
+  let result = text.replace(/(?<!\\)_([a-zA-Z][a-zA-Z0-9_]+|[0-9]{2,})/g, '_{$1}')
+
+  // Replace unbraced multi-character superscripts (e.g. ^max, ^10) with length >= 2
+  result = result.replace(/(?<!\\)\^([a-zA-Z][a-zA-Z0-9_]+|[0-9]{2,})/g, '^{$1}')
+
+  return result
+}
+
+/**
  * Applies Markdown-style inline formatting markers to HTML.
  * Called on plain-text segments ONLY — never passed into KaTeX.
  * Segments must already be HTML-escaped (via renderSegment) before calling this.
@@ -183,17 +209,17 @@ function applyInlineFormatting(text: string): string {
     .replace(/(?<!_)__(?!_)(.+?)(?<!_)__(?!_)/gs, '<u>$1</u>')
 
   // Superscript: ^{multi}, ^|...|  (absolute value), ^(...) (parenthesized group),
-  // or ^x (single non-space char or number with optional sign/decimal)
+  // or ^x (word identifier, digits/signed number, or single char)
   result = result.replace(/\^\{([^}]+)\}/g, '<sup>$1</sup>')
   result = result.replace(/\^\|([^|]*)\|/g, '<sup>|$1|</sup>')
   result = result.replace(/\^\(([^)]*)\)/g, '<sup>($1)</sup>')
-  result = result.replace(/\^([+-]?\d+(?:\.\d+)?|[^\s{|(])/g, '<sup>$1</sup>')
+  result = result.replace(/\^([a-zA-Z][a-zA-Z0-9_]+|[0-9]+|[+-]?\d+(?:\.\d+)?|[^\s{|(])/g, '<sup>$1</sup>')
 
   // Subscript: _{multi}, _(...) (parenthesized group),
-  // or _x (single non-space char or number with optional sign/decimal)
+  // or _x (word identifier, digits/signed number, or single char)
   result = result.replace(/_{([^}]+)}/g, '<sub>$1</sub>')
   result = result.replace(/_\(([^)]*)\)/g, '<sub>($1)</sub>')
-  result = result.replace(/(?<!\*\*?)(?<!_)_(?!\*\*?)([+-]?\d+(?:\.\d+)?|[^\s_{(])/g, '<sub>$1</sub>')
+  result = result.replace(/(?<!\*\*?)(?<!_)_(?!\*\*?)([a-zA-Z][a-zA-Z0-9_]+|[0-9]+|[+-]?\d+(?:\.\d+)?|[^\s_{(])/g, '<sub>$1</sub>')
 
   return result
 }
@@ -235,6 +261,24 @@ function renderProseSegment(segment: string): string {
   return parts.join('')
 }
 
+const MATH_CACHE = new Map<string, string>()
+const PLAIN_TEXT_CACHE = new Map<string, string>()
+const MAX_CACHE_SIZE = 2000
+
+export const clearLatexCache = (): void => {
+  MATH_CACHE.clear()
+  PLAIN_TEXT_CACHE.clear()
+}
+
+function setCached(cache: Map<string, string>, key: string, value: string): string {
+  if (cache.size >= MAX_CACHE_SIZE) {
+    const firstKey = cache.keys().next().value
+    if (firstKey !== undefined) cache.delete(firstKey)
+  }
+  cache.set(key, value)
+  return value
+}
+
 /**
  * Render inline LaTeX math expressions within text.
  * Handles three cases:
@@ -247,9 +291,11 @@ function renderProseSegment(segment: string): string {
  */
 export const renderMath = (text: string): string => {
   if (!text || typeof text !== 'string') return ''
+  const cached = MATH_CACHE.get(text)
+  if (cached !== undefined) return cached
 
-  // ── Normalize non-standard / MathJax-only commands to KaTeX equivalents ──
-  const normalized = text
+  // ── Auto-brace multi-character subscripts/superscripts & normalize non-standard commands ──
+  const normalized = normalizeLatexSubscriptsAndSuperscripts(text)
     .replace(/\\exponentialE\b/g, 'e')           // Euler's number e
     .replace(/\\imaginaryI\b/g, 'i')             // imaginary unit i
     .replace(/\\imaginaryJ\b/g, 'j')             // imaginary unit j (engineering)
@@ -278,15 +324,19 @@ export const renderMath = (text: string): string => {
     const hasFormatting = /\*\*|\*[^*]|__/.test(t)
     if (!hasFormatting) {
       try {
-        return restoreCurrencyTokens(
-          katex.renderToString(t, {
-            throwOnError: true,
-            displayMode: true,
-            trust: true
-          })
+        return setCached(
+          MATH_CACHE,
+          text,
+          restoreCurrencyTokens(
+            katex.renderToString(t, {
+              throwOnError: true,
+              displayMode: true,
+              trust: true
+            })
+          )
         )
       } catch {
-        return restoreCurrencyTokens(renderSegment(t))
+        return setCached(MATH_CACHE, text, restoreCurrencyTokens(renderSegment(t)))
       }
     }
   }
@@ -321,11 +371,11 @@ export const renderMath = (text: string): string => {
   }
 
   if (segments.length > 0) {
-    return restoreCurrencyTokens(segments.join(''))
+    return setCached(MATH_CACHE, text, restoreCurrencyTokens(segments.join('')))
   }
 
   // ── Pure plain text: no math at all ──
-  return restoreCurrencyTokens(renderProseSegment(t))
+  return setCached(MATH_CACHE, text, restoreCurrencyTokens(renderProseSegment(t)))
 }
 
 /**
@@ -336,7 +386,10 @@ export const renderMath = (text: string): string => {
  */
 export const renderPlainText = (text: string): string => {
   if (!text || typeof text !== 'string') return ''
-  return restoreCurrencyTokens(applyInlineFormatting(renderSegment(protectCurrencyAndEscapedDollars(text))))
+  const cached = PLAIN_TEXT_CACHE.get(text)
+  if (cached !== undefined) return cached
+  const result = restoreCurrencyTokens(applyInlineFormatting(renderSegment(protectCurrencyAndEscapedDollars(text))))
+  return setCached(PLAIN_TEXT_CACHE, text, result)
 }
 
 /**
@@ -346,4 +399,30 @@ export const renderPlainText = (text: string): string => {
 export const scanForDoubleEscapes = (text: string): boolean => {
   if (!text || typeof text !== 'string') return false
   return /\\\\\w/.test(text)
+}
+
+/**
+ * Sanitizes and flattens question text for single-line table and list previews.
+ * - Collapses HTML line breaks (<br>, <p>, <div>, etc.) into spaces
+ * - Converts display math ($$...$$ or \[...\]) into inline math ($...$) so KaTeX renders inline
+ * - Collapses consecutive linebreaks and whitespace into single spaces
+ */
+export function formatQuestionPreview(text: string): string {
+  if (!text || typeof text !== 'string') return ''
+  return text
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/?(p|div|li|ul|ol|h[1-6])[^>]*>/gi, ' ')
+    .replace(/\$\$([\s\S]*?)\$\$/g, '$$$1$$')
+    .replace(/\\\[([\s\S]*?)\\\]/g, '$$$1$$')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Renders a question preview as a single-line inline string with LaTeX math support.
+ * Guaranteed not to contain block elements or line breaks.
+ */
+export function renderQuestionPreview(text: string): string {
+  return renderMath(formatQuestionPreview(text))
 }

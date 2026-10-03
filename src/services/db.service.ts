@@ -1,7 +1,8 @@
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite'
 import { Filesystem, Directory } from '@capacitor/filesystem'
 import { z } from 'zod'
-import { Card, Topic } from '../types'
+import { Card, Topic, Subject } from '../types'
+import { SUBJECT_MAP, REVERSE_SUBJECT_MAP } from '../lib/subjectColors'
 import { DB_PRIVATE_FILENAME } from '../config/app-config'
 
 // ── Database Connection State ────────────────────────────────────────────────
@@ -85,7 +86,21 @@ export async function closeDatabase(): Promise<void> {
   } finally {
     db = null
     currentDbPath = null
+    hasTosColumn = null
     invalidateTopicsCache()
+  }
+}
+
+let hasTosColumn: boolean | null = null
+
+async function checkTosColumnExists(): Promise<boolean> {
+  if (hasTosColumn !== null) return hasTosColumn
+  try {
+    const columns = await executeQuery<{ name: string }>('PRAGMA table_info(cards);')
+    hasTosColumn = columns.some((col) => col.name === 'tos_topic_id')
+    return hasTosColumn
+  } catch {
+    return false
   }
 }
 
@@ -117,8 +132,11 @@ const CardRowSchema = z.object({
   data: z.string(),
   difficulty: z.enum(['easy', 'medium', 'hard']).nullable().optional(),
   tags: z.string().nullable().optional(),
+  tos_topic_id: z.string().nullable().optional(),
   is_custom: z.union([z.boolean(), z.number()]).optional(),
   created_at: z.union([z.number(), z.string()]).optional(),
+  deck_name: z.string().nullable().optional(),
+  subject: z.string().nullable().optional(),
 })
 
 const CardWithProgressRowSchema = CardRowSchema.extend({
@@ -195,6 +213,7 @@ function parseCardRow(row: z.infer<typeof CardWithProgressRowSchema>, topicId?: 
     data: data as Card['data'],
     difficulty: (row.difficulty ?? undefined) as Card['difficulty'],
     tags,
+    tosTopicId: row.tos_topic_id ?? null,
     isCustom: Boolean(row.is_custom),
     createdAt: row.created_at != null ? String(row.created_at) : '',
     easeFactor: row.ease_factor ?? undefined,
@@ -203,6 +222,8 @@ function parseCardRow(row: z.infer<typeof CardWithProgressRowSchema>, topicId?: 
     correct_count: row.correct_count ?? undefined,
     total_count: row.total_count ?? undefined,
     last_result: row.last_result ?? null,
+    deckName: row.deck_name ?? undefined,
+    subject: row.subject ? ((SUBJECT_MAP[row.subject] || row.subject) as Card['subject']) : undefined,
   }
 }
 
@@ -310,9 +331,10 @@ export const dbService = {
    * Fetch cards for a specific topic, joined with SM-2 progress details.
    */
   getCardsWithProgress: async (topicId: string): Promise<Card[]> => {
+    const tosCol = (await checkTosColumnExists()) ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
     const sql = `
       SELECT 
-        c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, c.is_custom, c.order_index, c.created_at,
+        c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, ${tosCol}, c.is_custom, c.order_index, c.created_at,
         p.ease_factor, p.interval, p.repetitions, p.next_review, p.last_reviewed, p.correct_count, p.total_count, p.last_result
       FROM cards c
       LEFT JOIN progress p ON c.id = p.card_id
@@ -327,13 +349,14 @@ export const dbService = {
    * Fetch cards (optionally filtered by topic), joined with SM-2 progress details.
    */
   getCards: async (topicId?: string): Promise<Card[]> => {
+    const tosCol = (await checkTosColumnExists()) ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
     let sql: string
     let params: unknown[] = []
 
     if (topicId) {
       sql = `
         SELECT 
-          c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, c.is_custom, c.order_index, c.created_at,
+          c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, ${tosCol}, c.is_custom, c.order_index, c.created_at,
           p.ease_factor, p.interval, p.repetitions, p.next_review, p.last_reviewed, p.correct_count, p.total_count, p.last_result
         FROM cards c
         LEFT JOIN progress p ON c.id = p.card_id
@@ -344,7 +367,7 @@ export const dbService = {
     } else {
       sql = `
         SELECT 
-          c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, c.is_custom, c.order_index, c.created_at,
+          c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, ${tosCol}, c.is_custom, c.order_index, c.created_at,
           p.ease_factor, p.interval, p.repetitions, p.next_review, p.last_reviewed, p.correct_count, p.total_count, p.last_result
         FROM cards c
         LEFT JOIN progress p ON c.id = p.card_id
@@ -360,15 +383,91 @@ export const dbService = {
    * Fetch all cards for a specific topic without progress join, ordered by order_index.
    */
   getAllCardsByTopic: async (topicId: string): Promise<Card[]> => {
+    const tosCol = (await checkTosColumnExists()) ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
     const sql = `
       SELECT 
-        id, topic_id, type, data, difficulty, tags, is_custom, order_index, created_at
+        id, topic_id, type, data, difficulty, tags, ${tosCol}, is_custom, order_index, created_at
       FROM cards
       WHERE topic_id = ?
       ORDER BY order_index ASC, created_at ASC
     `
     const rows = await executeQuery(sql, [topicId])
     return z.array(CardRowSchema).parse(rows).map(row => parseCardRow(row, topicId))
+  },
+
+  /**
+   * Fetch MCQ cards for Gauntlet arcade mode (filtered by selected subjects, or ALL subjects).
+   * Robustly matches both short abbreviations ('MATH') and full syllabus names ('Mathematics').
+   */
+  getGauntletCards: async (subjectsInput: Subject[] | Subject | 'ALL' = 'ALL'): Promise<Card[]> => {
+    const tosCol = (await checkTosColumnExists()) ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
+    let sql: string
+    let params: unknown[] = []
+
+    const subjects: Subject[] = Array.isArray(subjectsInput)
+      ? subjectsInput
+      : (subjectsInput === 'ALL' ? ['MATH', 'GEAS', 'ELECS', 'EST'] : [subjectsInput])
+
+    if (subjects.length > 0 && subjects.length < 4) {
+      const allowedNames: string[] = []
+      for (const s of subjects) {
+        allowedNames.push(s)
+        if (REVERSE_SUBJECT_MAP[s]) {
+          allowedNames.push(REVERSE_SUBJECT_MAP[s])
+        }
+      }
+      const placeholders = allowedNames.map(() => '?').join(', ')
+      sql = `
+        SELECT 
+          c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, ${tosCol}, c.is_custom, c.order_index, c.created_at,
+          t.name as deck_name, t.subject as subject
+        FROM cards c
+        JOIN topics t ON c.topic_id = t.id
+        WHERE c.type = 'mcq' AND t.subject IN (${placeholders})
+        ORDER BY RANDOM()
+      `
+      params = allowedNames
+    } else {
+      sql = `
+        SELECT 
+          c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, ${tosCol}, c.is_custom, c.order_index, c.created_at,
+          t.name as deck_name, t.subject as subject
+        FROM cards c
+        JOIN topics t ON c.topic_id = t.id
+        WHERE c.type = 'mcq'
+        ORDER BY RANDOM()
+      `
+    }
+
+    const rows = await executeQuery(sql, params)
+    return z.array(CardRowSchema).parse(rows).map(row => parseCardRow(row))
+  },
+
+  /**
+   * Fetch available MCQ card counts per subject for Gauntlet setup buttons.
+   */
+  getGauntletPoolSizes: async (): Promise<Record<Subject, number>> => {
+    const sql = `
+      SELECT t.subject, COUNT(c.id) as count
+      FROM cards c
+      JOIN topics t ON c.topic_id = t.id
+      WHERE c.type = 'mcq'
+      GROUP BY t.subject
+    `
+    const rows = await executeQuery<{ subject: string; count: number }>(sql)
+    const result: Record<Subject, number> = {
+      MATH: 0,
+      GEAS: 0,
+      ELECS: 0,
+      EST: 0,
+    }
+    for (const row of rows) {
+      const code = (SUBJECT_MAP[row.subject] || row.subject) as Subject
+      if (result[code] !== undefined) {
+        result[code] += row.count
+      }
+    }
+    return result
   },
 
   /**

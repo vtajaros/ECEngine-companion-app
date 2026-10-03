@@ -19,6 +19,7 @@ import { copyToClipboard } from '../services/clipboard.service'
 interface LearnSessionProps {
   topicId: string
   topicName?: string
+  initialCards?: Card[]
   onExit: () => void
   onOpenSettings?: () => void
   learnSettings?: LearnPipelineSettings
@@ -45,7 +46,7 @@ export function partitionCards(cards: Card[], partitionSize = 5, minTrailingSize
   return partitions
 }
 
-export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learnSettings, ttsEnabled }: LearnSessionProps) {
+export function LearnSession({ topicId, topicName, initialCards, onExit, onOpenSettings, learnSettings, ttsEnabled }: LearnSessionProps) {
   const { speak, stop } = useTTS()
   const { play } = useSound()
   const [cards, setCards] = useState<Card[]>([])
@@ -139,8 +140,12 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
     setError(null)
 
     // Fire both fetches concurrently — neither blocks the other
+    const cardsPromise = (initialCards && initialCards.length > 0)
+      ? Promise.resolve(initialCards)
+      : dbService.getAllCardsByTopic(topicId)
+
     Promise.all([
-      dbService.getAllCardsByTopic(topicId),
+      cardsPromise,
       bookmarkService.getAll(),
     ])
       .then(async ([allCards, savedBookmarks]) => {
@@ -176,7 +181,7 @@ export function LearnSession({ topicId, topicName, onExit, onOpenSettings, learn
       isCancelled = true
       stop()
     }
-  }, [topicId, learnSettings, stop])
+  }, [topicId, initialCards, learnSettings, stop])
 
   const currentPartition = partitions[currentPartitionIndex] || []
   const currentCard = activeQueue[currentCardIndex]

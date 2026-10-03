@@ -25,6 +25,10 @@ const FlashcardSession = lazy(() =>
 const SettingsPage = lazy(() =>
   import('./pages/Settings').then((m) => ({ default: m.Settings }))
 )
+const GauntletSession = lazy(() =>
+  import('./pages/GauntletSession').then((m) => ({ default: m.GauntletSession }))
+)
+import type { GauntletArcadeConfig } from './lib/gauntlet'
 
 function SessionFallback() {
   return (
@@ -42,6 +46,8 @@ interface ActiveSession {
   learnSettings?: LearnSettings
   testSettings?: TestSettings
   flashcardSettings?: FlashcardSettings
+  gauntletConfig?: GauntletArcadeConfig
+  customCards?: Card[]
 }
 
 function toPipelineSettings(s: LearnSettings): LearnPipelineSettings {
@@ -58,6 +64,7 @@ function App() {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [testCards, setTestCards] = useState<Card[]>([])
+  const [gauntletCards, setGauntletCards] = useState<Card[]>([])
 
   // Lifted browser state to survive session navigation
   const [browserMode, setBrowserMode] = useState<BrowserMode>('looksfam')
@@ -213,6 +220,24 @@ function App() {
           scrollPosition={scrollPosition}
           onScrollPositionChange={setScrollPosition}
           onOpenSettings={() => setShowSettings(true)}
+          onStartGauntlet={async (config) => {
+            try {
+              const cards = await dbService.getGauntletCards(config.subjects)
+              if (cards.length === 0) {
+                alert('No MCQ questions available for Gauntlet in ' + config.subjects.join(', '))
+                return
+              }
+              setGauntletCards(cards)
+              setActiveSession({
+                topicId: 'gauntlet',
+                topicName: `Gauntlet: ${config.mode.toUpperCase()}`,
+                mode: 'gauntlet',
+                gauntletConfig: config,
+              })
+            } catch (err) {
+              console.error('[App] Failed to load cards for Gauntlet:', err)
+            }
+          }}
           onSelectTopic={(topic, mode, selectedLearnSettings, selectedTestSettings, selectedFlashcardSettings) => {
             if (mode === 'looksfam') {
               setActiveSession({
@@ -264,10 +289,33 @@ function App() {
           <LearnSession
             topicId={activeSession.topicId}
             topicName={activeSession.topicName}
+            initialCards={activeSession.customCards}
             onExit={() => setActiveSession(null)}
             onOpenSettings={() => setShowSettings(true)}
             learnSettings={pipelineSettings}
             ttsEnabled={activeSession.learnSettings?.ttsEnabled}
+          />
+        </Suspense>
+      )}
+
+      {activeSession && activeSession.mode === 'gauntlet' && activeSession.gauntletConfig && (
+        <Suspense fallback={<SessionFallback />}>
+          <GauntletSession
+            cards={gauntletCards}
+            config={activeSession.gauntletConfig}
+            onExit={() => setActiveSession(null)}
+            onDrillMistakes={(mistakeCards) => {
+              setActiveSession({
+                topicId: 'gauntlet-mistakes',
+                topicName: 'Gauntlet Mistakes Drill',
+                mode: 'looksfam',
+                customCards: mistakeCards,
+                learnSettings: {
+                  ...DEFAULT_LEARN_SETTINGS,
+                  itemCount: mistakeCards.length,
+                },
+              })
+            }}
           />
         </Suspense>
       )}

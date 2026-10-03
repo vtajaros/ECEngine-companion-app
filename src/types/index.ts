@@ -12,8 +12,13 @@ export interface Card {
   data: CardData
   difficulty: Difficulty
   tags: string[]
+  tosTopicId?: string | null
   isCustom: boolean
   createdAt: string
+  deckName?: string
+  subject?: Subject
+  cardNumber?: number
+  totalInDeck?: number
   /**
    * Set to `true` on MCQ cards synthesised from flashcards via generateMCQs().
    * These cards reuse the source flashcard's DB id — writing progress into that
@@ -89,4 +94,5 @@ export interface Topic {
   createdAt?: number
   tags?: string[]
   isFavorite?: boolean
+  defaultTosTopicId?: string | null
 }
