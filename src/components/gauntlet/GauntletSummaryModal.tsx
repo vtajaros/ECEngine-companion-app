@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   Trophy,
   Flame,
   RotateCcw,
   ArrowRight,
+  ArrowLeft,
   ChevronDown,
   ChevronUp,
   GraduationCap,
@@ -11,6 +12,7 @@ import {
   CheckCircle2,
   XCircle,
 } from 'lucide-react'
+import { App as CapacitorApp } from '@capacitor/app'
 import { Card, MCQData, Subject } from '../../types'
 import { renderMath } from '../../lib/latex'
 import { getTosTopicById } from '../../lib/tosClassification'
@@ -70,6 +72,16 @@ export const GauntletSummaryModal: React.FC<GauntletSummaryModalProps> = ({
 }) => {
   const [expandedMistakes, setExpandedMistakes] = useState<Record<string, boolean>>({})
   const [activeSubjectTab, setActiveSubjectTab] = useState<Subject | null>(null)
+
+  // Intercept hardware/gesture back button on Android to exit summary
+  useEffect(() => {
+    const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      onExit()
+    })
+    return () => {
+      listenerPromise.then((handle) => handle.remove()).catch(() => {})
+    }
+  }, [onExit])
 
   const toggleMistake = (cardId: string) => {
     setExpandedMistakes((prev) => ({
@@ -143,8 +155,24 @@ export const GauntletSummaryModal: React.FC<GauntletSummaryModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-neutral-950/95 backdrop-blur-md text-neutral-100 font-rajdhani select-none overflow-y-auto">
+      {/* Top Header Bar with Back Button */}
+      <div className="shrink-0 sticky top-0 z-10 border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-md px-4 py-3 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onExit}
+          className="p-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-neutral-200 active:scale-95 transition-all"
+          title="Back to Gauntlet"
+        >
+          <ArrowLeft size={18} />
+        </button>
+        <span className="text-xs font-display uppercase tracking-widest text-neutral-400 font-bold">
+          {result.mode === 'survival' ? 'Survival Summary' : 'Time Trial Summary'}
+        </span>
+        <div className="w-8" />
+      </div>
+
       {/* Top Banner */}
-      <div className="flex flex-col items-center justify-center pt-8 pb-4 px-4 text-center border-b border-neutral-800/80">
+      <div className="flex flex-col items-center justify-center pt-6 pb-4 px-4 text-center border-b border-neutral-800/80">
         {result.isNewHighScore ? (
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-400 text-xs font-bold uppercase tracking-wider mb-2 animate-bounce">
             <Trophy size={14} /> NEW RECORD!

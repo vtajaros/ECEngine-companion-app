@@ -50,8 +50,6 @@ export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
     setConfig((prev) => {
       const isSelected = prev.subjects.includes(subj)
       if (isSelected) {
-        // Prevent deselecting if it's the only one left
-        if (prev.subjects.length <= 1) return prev
         return {
           ...prev,
           subjects: prev.subjects.filter((s) => s !== subj),
@@ -162,24 +160,23 @@ export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
               const theme = SUBJECT_THEME_COLORS[s]
 
               return (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => toggleSubject(s)}
-                  className={`flex flex-col items-center justify-center py-2.5 px-1 rounded-xl border transition-all text-center select-none active:scale-95 ${
-                    isSelected
-                      ? `${theme.activeBorder} ${theme.activeBg} ${theme.activeText}`
-                      : 'border-neutral-800 bg-neutral-900/40 text-neutral-400 hover:border-neutral-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-center gap-1 font-display text-xs font-bold tracking-wide">
+                <div key={s} className="flex flex-col items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleSubject(s)}
+                    className={`w-full py-2.5 px-1 rounded-xl border flex items-center justify-center gap-1.5 font-display text-xs font-bold tracking-wide transition-all text-center select-none active:scale-95 ${
+                      isSelected
+                        ? `${theme.activeBorder} ${theme.activeBg} ${theme.activeText}`
+                        : 'border-neutral-800 bg-neutral-900/40 text-neutral-400 hover:border-neutral-700'
+                    }`}
+                  >
                     <span>{s}</span>
                     {isSelected && <Check size={11} className="stroke-[3]" />}
-                  </div>
-                  <div className="text-[9.5px] font-mono opacity-70 mt-0.5 whitespace-nowrap">
-                    {count} available
-                  </div>
-                </button>
+                  </button>
+                  <span className="text-[10px] font-mono text-neutral-400 text-center whitespace-nowrap">
+                    {count.toLocaleString()} cards
+                  </span>
+                </div>
               )
             })}
           </div>
@@ -318,11 +315,18 @@ export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
         <div className="pt-2">
           <button
             type="button"
+            disabled={config.subjects.length === 0}
             onClick={() => onStartRun(config)}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#00ff41] text-[#0d0d0d] font-display font-black text-sm uppercase tracking-wider shadow-[0_0_20px_rgba(0,255,65,0.35)] active:scale-[0.98] transition-all cursor-pointer"
+            className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-display font-black text-sm uppercase tracking-wider transition-all ${
+              config.subjects.length === 0
+                ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed border border-neutral-700/50'
+                : 'bg-[#00ff41] text-[#0d0d0d] shadow-[0_0_20px_rgba(0,255,65,0.35)] active:scale-[0.98] cursor-pointer'
+            }`}
           >
-            <Play size={16} className="fill-current" />
-            START {config.mode === 'survival' ? 'SURVIVAL RUN' : 'TIMETRIAL RUN'}
+            <Play size={16} className={config.subjects.length === 0 ? 'fill-neutral-500' : 'fill-current'} />
+            {config.subjects.length === 0
+              ? 'SELECT AT LEAST 1 SUBJECT'
+              : `START ${config.mode === 'survival' ? 'SURVIVAL RUN' : 'TIMETRIAL RUN'}`}
           </button>
         </div>
 

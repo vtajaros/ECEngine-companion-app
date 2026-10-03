@@ -7,7 +7,9 @@ import {
   Music,
   Volume2,
   VolumeX,
+  Bookmark,
 } from 'lucide-react'
+import { App as CapacitorApp } from '@capacitor/app'
 import { Card, MCQData } from '../types'
 import {
   GauntletArcadeConfig,
@@ -16,11 +18,14 @@ import {
   difficultyWeight,
   scoreAnswer,
   isLifeBonusStreak,
+  LINGER_CORRECT_MS,
+  LINGER_WRONG_MS,
 } from '../lib/gauntlet'
 import { shuffleChoices, isSafeToShuffleChoices } from '../lib/scrambler'
 import { shuffleArray } from '../lib/utils'
-import { renderMath } from '../lib/latex'
+import { renderMath, renderPlainText } from '../lib/latex'
 import { resolveImageSrc } from '../services/image.service'
+import { bookmarkService } from '../services/bookmark.service'
 import { useSound, getSoundsMuted, setSoundsMuted } from '../hooks/useSound'
 import { useGauntletMusic, getSurvivalMusicRegion } from '../hooks/useGauntletMusic'
 import { gauntletStorageService } from '../services/gauntlet-storage.service'
@@ -44,6 +49,7 @@ interface ActiveQuestion {
   card: Card
   mcq: MCQData
   choices: string[]
+  choicesPlainText?: boolean[]
   answerIndex: number
   parMs: number
   weight: number
@@ -78,11 +84,24 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
   const [isMusicMuted, setIsMusicMuted] = useState(false)
   const [isSfxMuted, setIsSfxMuted] = useState(() => getSoundsMuted())
 
+  // Bookmarks
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    bookmarkService.getAll().then(setBookmarkedIds).catch(() => {})
+  }, [])
+
   // Question interaction state
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null)
   const [isAnsweringLocked, setIsAnsweringLocked] = useState(false)
   const [questionStartTime, setQuestionStartTime] = useState<number>(() => Date.now())
   const [sessionStartTime] = useState<number>(() => Date.now())
+  const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (lingerTimerRef.current) clearTimeout(lingerTimerRef.current)
+    }
+  }, [])
 
   // Timers
   const [survivalTimeLeft, setSurvivalTimeLeft] = useState(config.perQuestionSec)
@@ -93,8 +112,44 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
 
   // Dialogs
   const [showExitConfirm, setShowExitConfirm] = useState(false)
+  const showExitConfirmRef = useRef(showExitConfirm)
+  useEffect(() => {
+    showExitConfirmRef.current = showExitConfirm
+  }, [showExitConfirm])
+
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const lightboxSrcRef = useRef<string | null>(null)
+  useEffect(() => {
+    lightboxSrcRef.current = lightboxSrc
+  }, [lightboxSrc])
+
   const [runResult, setRunResult] = useState<GauntletRunResult | null>(null)
+  const runResultRef = useRef<GauntletRunResult | null>(null)
+  useEffect(() => {
+    runResultRef.current = runResult
+  }, [runResult])
+
+  // Intercept hardware/gesture back button on Android
+  useEffect(() => {
+    const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      if (lightboxSrcRef.current) {
+        setLightboxSrc(null)
+        return
+      }
+      if (runResultRef.current) {
+        onExit()
+        return
+      }
+      if (showExitConfirmRef.current) {
+        setShowExitConfirm(false)
+        return
+      }
+      setShowExitConfirm(true)
+    })
+    return () => {
+      listenerPromise.then((handle) => handle.remove()).catch(() => {})
+    }
+  }, [onExit])
 
   // Start background music on mount and clean up on exit
   useEffect(() => {
@@ -107,6 +162,13 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
   // Active question resolution
   const currentCard = deckPool[cardIndex % deckPool.length]
   const currentMcq = currentCard?.data as MCQData
+  const isCurrentCardBookmarked = currentCard ? bookmarkedIds.has(currentCard.id) : false
+
+  const handleToggleBookmark = async () => {
+    if (!currentCard) return
+    const updated = await bookmarkService.toggle(currentCard.id)
+    setBookmarkedIds(updated)
+  }
 
   const activeQuestion: ActiveQuestion | null = useMemo(() => {
     if (!currentCard || !currentMcq || !Array.isArray(currentMcq.choices)) return null
@@ -116,11 +178,13 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
 
     let finalChoices = [...rawChoices]
     let finalAnswer = rawAnswer
+    let finalChoicesPlainText = currentMcq.choicesPlainText
 
     if (isSafeToShuffleChoices(rawChoices)) {
       const scrambled = shuffleChoices(rawChoices, rawAnswer, currentMcq.choicesPlainText)
       finalChoices = scrambled.choices
       finalAnswer = scrambled.answer
+      finalChoicesPlainText = scrambled.choicesPlainText
     }
 
     const feats = extractFeatures(currentMcq)
@@ -131,11 +195,24 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
       card: currentCard,
       mcq: currentMcq,
       choices: finalChoices,
+      choicesPlainText: finalChoicesPlainText,
       answerIndex: finalAnswer,
       parMs,
       weight,
     }
   }, [currentCard, currentMcq])
+
+  const questionHtml = useMemo(
+    () => (activeQuestion?.mcq.question ? renderMath(activeQuestion.mcq.question) : ''),
+    [activeQuestion]
+  )
+
+  const choicesHtml = useMemo(() => {
+    if (!activeQuestion) return []
+    return activeQuestion.choices.map((choice, idx) =>
+      (activeQuestion.choicesPlainText?.[idx] ? renderPlainText : renderMath)(choice)
+    )
+  }, [activeQuestion])
 
   // Resolve question image
   const [activeImageSrc, setActiveImageSrc] = useState<string | null>(null)
@@ -231,15 +308,16 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
       }
     }
 
+    if (lingerTimerRef.current) clearTimeout(lingerTimerRef.current)
     if (config.startingLives > 0 && nextLives <= 0) {
-      setTimeout(() => finishRun(updatedMistakes, updatedAnswers, score, bestStreak), 500)
+      lingerTimerRef.current = setTimeout(() => finishRun(updatedMistakes, updatedAnswers, score, bestStreak), LINGER_WRONG_MS)
     } else {
-      setTimeout(() => {
+      lingerTimerRef.current = setTimeout(() => {
         setCardIndex((c) => c + 1)
         setSelectedChoice(null)
         setIsAnsweringLocked(false)
         setQuestionStartTime(Date.now())
-      }, 700)
+      }, LINGER_WRONG_MS)
     }
   }, [
     isAnsweringLocked,
@@ -258,7 +336,7 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
 
   // Time Trial Session Countdown
   useEffect(() => {
-    if (config.mode !== 'timetrial' || runResult || isGameOverRef.current) return
+    if (config.mode !== 'timetrial' || runResult || isGameOverRef.current || isAnsweringLocked) return
 
     const interval = setInterval(() => {
       setTimeTrialTimeLeft((prev) => {
@@ -272,7 +350,7 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [config.mode, runResult, finishRun, mistakes, allAnswers, score, bestStreak])
+  }, [config.mode, runResult, finishRun, mistakes, allAnswers, score, bestStreak, isAnsweringLocked])
 
   // Survival Per-Question Countdown (skips if config.perQuestionSec === 0)
   useEffect(() => {
@@ -359,12 +437,13 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
           setTimeout(() => setNotification(null), 1200)
         }
 
-        setTimeout(() => {
+        if (lingerTimerRef.current) clearTimeout(lingerTimerRef.current)
+        lingerTimerRef.current = setTimeout(() => {
           setCardIndex((c) => c + 1)
           setSelectedChoice(null)
           setIsAnsweringLocked(false)
           setQuestionStartTime(Date.now())
-        }, 400)
+        }, LINGER_CORRECT_MS)
       } else {
         play('wrong')
         const scored = scoreAnswer({
@@ -399,17 +478,19 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
           }
 
           if (nextLives <= 0) {
-            setTimeout(() => finishRun(updatedMistakes, updatedAnswers, newScore, bestStreak), 600)
+            if (lingerTimerRef.current) clearTimeout(lingerTimerRef.current)
+            lingerTimerRef.current = setTimeout(() => finishRun(updatedMistakes, updatedAnswers, newScore, bestStreak), LINGER_WRONG_MS)
             return
           }
         }
 
-        setTimeout(() => {
+        if (lingerTimerRef.current) clearTimeout(lingerTimerRef.current)
+        lingerTimerRef.current = setTimeout(() => {
           setCardIndex((c) => c + 1)
           setSelectedChoice(null)
           setIsAnsweringLocked(false)
           setQuestionStartTime(Date.now())
-        }, 750)
+        }, LINGER_WRONG_MS)
       }
     },
     [
@@ -435,134 +516,156 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
   const timeTrialSeconds = timeTrialTimeLeft % 60
 
   return (
-    <div className="relative flex h-full w-full flex-col bg-neutral-950 text-neutral-100 font-rajdhani select-none overflow-hidden">
-      {/* Top HUD */}
-      <header className="border-b border-neutral-800/80 bg-neutral-900/60 backdrop-blur-md px-3.5 py-2.5 flex items-center justify-between z-20">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowExitConfirm(true)}
-            className="p-1.5 rounded-lg border border-neutral-800 text-neutral-400 hover:text-neutral-100 active:scale-95"
-            title="Exit run"
-          >
-            <X size={16} />
-          </button>
+    <div className="relative flex h-full w-full flex-col bg-neutral-950 text-neutral-50 select-none overflow-hidden">
+      {/* Top Header */}
+      <header className="shrink-0 sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-md px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 w-full">
+          {/* Left: Exit button & Mode / Score Info */}
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => setShowExitConfirm(true)}
+              className="p-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-neutral-200 active:scale-95 transition-all shrink-0"
+              title="Exit run"
+            >
+              <X size={18} />
+            </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-semibold tracking-tight text-neutral-100 uppercase truncate">
+                  {config.mode === 'survival' ? 'Survival' : 'Time Trial'}
+                </h1>
+                <span className="text-[11px] font-mono font-bold tracking-wider text-[#00ff41] bg-[#00ff41]/10 px-2 py-0.5 rounded border border-[#00ff41]/20">
+                  {score.toLocaleString()} <span className="text-[9px] text-neutral-400 font-normal">PTS</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-400 flex items-center gap-2">
+                <span>Question #{cardIndex + 1}</span>
+                {streak > 1 && (
+                  <span className="text-amber-400 font-medium font-mono flex items-center gap-0.5">
+                    • <Flame size={11} className="inline fill-amber-400 text-amber-400" /> {streak} Combo
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
 
-          <div className="font-display font-bold text-sm tracking-wider text-[#00ff41] drop-shadow-[0_0_8px_rgba(0,255,65,0.4)]">
-            {score.toLocaleString()} <span className="text-[10px] text-neutral-400 font-normal">PTS</span>
+          {/* Right: Audio Toggles & Lives/Clock */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Audio Toggles */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isMusicMuted
+                  setIsMusicMuted(next)
+                  if (next) {
+                    gauntletMusic.stop(0.2)
+                  } else {
+                    gauntletMusic.start(config.mode === 'survival' ? 'battle1' : 'battle2')
+                  }
+                }}
+                className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
+                  isMusicMuted
+                    ? 'border-neutral-800 bg-neutral-900 text-neutral-500'
+                    : 'border-[#00ff41]/40 bg-[#00ff41]/10 text-[#00ff41]'
+                }`}
+                title={isMusicMuted ? 'Unmute BGM' : 'Mute BGM'}
+              >
+                <Music size={14} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isSfxMuted
+                  setIsSfxMuted(next)
+                  setSoundsMuted(next)
+                }}
+                className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
+                  isSfxMuted
+                    ? 'border-neutral-800 bg-neutral-900 text-neutral-500'
+                    : 'border-cyan-400/40 bg-cyan-400/10 text-cyan-400'
+                }`}
+                title={isSfxMuted ? 'Unmute SFX' : 'Mute SFX'}
+              >
+                {isSfxMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              </button>
+            </div>
+
+            {/* Lives or Clock */}
+            {config.mode === 'survival' ? (
+              <div className="flex items-center gap-1 bg-neutral-900/90 px-2.5 py-1 rounded-lg border border-neutral-800">
+                {config.startingLives === 0 ? (
+                  <span className="text-xs font-mono font-bold text-red-400 flex items-center gap-1">
+                    <Heart size={14} className="text-red-500 fill-red-500" /> ∞
+                  </span>
+                ) : (
+                  <>
+                    {Array.from({ length: Math.min(5, lives) }).map((_, i) => (
+                      <Heart
+                        key={i}
+                        size={14}
+                        className="text-red-500 fill-red-500 drop-shadow-[0_0_6px_rgba(239,68,68,0.5)]"
+                      />
+                    ))}
+                    {lives > 5 && (
+                      <span className="text-xs font-mono font-bold text-red-400">+{lives - 5}</span>
+                    )}
+                    {lives <= 0 && (
+                      <span className="text-xs font-mono font-bold text-neutral-500">0</span>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="font-mono text-xs font-bold text-cyan-400 bg-cyan-400/10 border border-cyan-400/30 px-2.5 py-1 rounded-lg">
+                {timeTrialMinutes}:{timeTrialSeconds.toString().padStart(2, '0')}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Center Streak Badge */}
-        {streak > 1 ? (
-          <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono font-bold animate-pulse">
-            <Flame size={12} className="text-amber-400 fill-amber-400" />
-            {streak} COMBO
-          </div>
-        ) : (
-          <div className="text-[11px] font-mono text-neutral-500 uppercase tracking-wider">
-            #{cardIndex + 1}
+        {/* Progress Bar (countdown for question in Survival, session countdown in Time Trial) */}
+        {config.mode === 'survival' && config.perQuestionSec > 0 && (
+          <div className="mx-auto mt-2.5 max-w-3xl h-1 w-full bg-neutral-900 rounded-full overflow-hidden">
+            <div
+              className={`h-full transition-all duration-200 ${
+                survivalTimeLeft <= 3
+                  ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]'
+                  : survivalTimeLeft <= 6
+                  ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]'
+                  : 'bg-[#00ff41] shadow-[0_0_8px_rgba(0,255,65,0.4)]'
+              }`}
+              style={{
+                width: `${(survivalTimeLeft / config.perQuestionSec) * 100}%`,
+              }}
+            />
           </div>
         )}
 
-        {/* Right Gauge & Audio Controls */}
-        <div className="flex items-center gap-2">
-          {/* Audio Toggles */}
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => {
-                const next = !isMusicMuted
-                setIsMusicMuted(next)
-                if (next) {
-                  gauntletMusic.stop(0.2)
-                } else {
-                  gauntletMusic.start(config.mode === 'survival' ? 'battle1' : 'battle2')
-                }
-              }}
-              className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
-                isMusicMuted
-                  ? 'border-neutral-800 bg-neutral-900/60 text-neutral-500'
-                  : 'border-[#00ff41]/50 bg-[#00ff41]/10 text-[#00ff41]'
+        {config.mode === 'timetrial' && config.durationSec > 0 && (
+          <div className="mx-auto mt-2.5 max-w-3xl h-1 w-full bg-neutral-900 rounded-full overflow-hidden">
+            <div
+              className={`h-full transition-all duration-1000 ${
+                timeTrialTimeLeft <= 15
+                  ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]'
+                  : timeTrialTimeLeft <= 30
+                  ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]'
+                  : 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.4)]'
               }`}
-              title={isMusicMuted ? 'Unmute BGM' : 'Mute BGM'}
-            >
-              <Music size={13} />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                const next = !isSfxMuted
-                setIsSfxMuted(next)
-                setSoundsMuted(next)
+              style={{
+                width: `${(timeTrialTimeLeft / config.durationSec) * 100}%`,
               }}
-              className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
-                isSfxMuted
-                  ? 'border-neutral-800 bg-neutral-900/60 text-neutral-500'
-                  : 'border-cyan-400/50 bg-cyan-400/10 text-cyan-400'
-              }`}
-              title={isSfxMuted ? 'Unmute SFX' : 'Mute SFX'}
-            >
-              {isSfxMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-            </button>
+            />
           </div>
-
-          {/* Lives or Clock */}
-          {config.mode === 'survival' ? (
-            <div className="flex items-center gap-1 bg-neutral-900/80 px-2 py-1 rounded-lg border border-neutral-800">
-              {config.startingLives === 0 ? (
-                <span className="text-xs font-mono font-bold text-red-400 flex items-center gap-1">
-                  <Heart size={14} className="text-red-500 fill-red-500" /> ∞
-                </span>
-              ) : (
-                <>
-                  {Array.from({ length: Math.min(5, lives) }).map((_, i) => (
-                    <Heart
-                      key={i}
-                      size={14}
-                      className="text-red-500 fill-red-500 drop-shadow-[0_0_6px_rgba(239,68,68,0.5)]"
-                    />
-                  ))}
-                  {lives > 5 && (
-                    <span className="text-xs font-mono font-bold text-red-400">+{lives - 5}</span>
-                  )}
-                  {lives <= 0 && (
-                    <span className="text-xs font-mono font-bold text-neutral-500">0</span>
-                  )}
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="font-mono text-xs font-bold text-cyan-400 bg-cyan-400/10 border border-cyan-400/30 px-2 py-0.5 rounded-md">
-              {timeTrialMinutes}:{timeTrialSeconds.toString().padStart(2, '0')}
-            </div>
-          )}
-        </div>
+        )}
       </header>
-
-      {/* Survival Countdown Bar (if enabled) */}
-      {config.mode === 'survival' && config.perQuestionSec > 0 && (
-        <div className="h-1.5 w-full bg-neutral-900 overflow-hidden relative">
-          <div
-            className={`h-full transition-all duration-200 ${
-              survivalTimeLeft <= 5
-                ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]'
-                : survivalTimeLeft <= 10
-                ? 'bg-amber-400'
-                : 'bg-[#00ff41]'
-            }`}
-            style={{
-              width: `${(survivalTimeLeft / config.perQuestionSec) * 100}%`,
-            }}
-          />
-        </div>
-      )}
 
       {/* Floating Combo / Life Bonus Badge */}
       {notification && (
         <div
-          className={`absolute top-14 left-1/2 -translate-x-1/2 z-30 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-700 text-xs font-mono font-bold uppercase tracking-wider animate-bounce ${notification.color}`}
+          className={`fixed top-16 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full bg-neutral-900 border border-neutral-700 text-xs font-mono font-bold uppercase tracking-wider shadow-lg animate-bounce ${notification.color}`}
         >
           {notification.text}
         </div>
@@ -570,96 +673,140 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
 
       {/* Question Content View */}
       {activeQuestion ? (
-        <main className="flex-1 flex flex-col justify-between p-4 overflow-y-auto max-w-md mx-auto w-full">
-          {/* Question Meta & Statement */}
-          <div className="space-y-3 pt-1">
-            <div className="flex items-center justify-between text-[11px] font-mono">
-              <span className="px-2 py-0.5 rounded border border-neutral-800 bg-neutral-900 text-neutral-300 uppercase font-semibold">
-                {activeQuestion.card.subject || 'ECE'}
-              </span>
-              {activeQuestion.card.tosTopicId && (
-                <span className="px-2 py-0.5 rounded border border-neutral-800 bg-neutral-900 text-[#00ff41] font-semibold">
-                  {activeQuestion.card.tosTopicId}
-                </span>
-              )}
-            </div>
-
-            <div
-              className="text-base sm:text-lg font-medium text-neutral-100 leading-relaxed break-words"
-              dangerouslySetInnerHTML={{
-                __html: renderMath(activeQuestion.mcq.question || ''),
-              }}
-            />
-
-            {/* Optional diagram */}
-            {activeImageSrc && (
-              <div
-                onClick={() => setLightboxSrc(activeImageSrc)}
-                className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-2 flex justify-center cursor-zoom-in active:scale-[0.99] transition-all"
-              >
-                <img
-                  src={activeImageSrc}
-                  alt="Diagram"
-                  className="max-h-48 max-w-full object-contain rounded-lg"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Answer Choice Buttons (Thumb-zone optimized) */}
-          <div className="space-y-2.5 pt-4 pb-2">
-            {activeQuestion.choices.map((choice, idx) => {
-              const isSelected = selectedChoice === idx
-              const isCorrectAnswer = idx === activeQuestion.answerIndex
-
-              let btnStyles =
-                'border-neutral-800 bg-neutral-900/70 text-neutral-200 hover:border-neutral-700'
-
-              if (isAnsweringLocked) {
-                if (isCorrectAnswer) {
-                  btnStyles =
-                    'border-[#00ff41] bg-[#00ff41]/20 text-[#00ff41] shadow-[0_0_12px_rgba(0,255,65,0.3)] font-bold'
-                } else if (isSelected && !isCorrectAnswer) {
-                  btnStyles =
-                    'border-red-500 bg-red-500/20 text-red-300 shadow-[0_0_12px_rgba(239,68,68,0.3)]'
-                } else {
-                  btnStyles = 'border-neutral-900 bg-neutral-950/40 text-neutral-600 opacity-40'
-                }
-              }
-
-              return (
+        <main className="flex-1 px-4 sm:px-6 flex flex-col py-6 pb-16 overflow-y-auto">
+          <div className="mx-auto max-w-3xl w-full my-auto">
+            <div className="flex flex-col gap-5">
+              {/* Question Card */}
+              <div className="relative rounded-2xl border border-neutral-800 bg-neutral-900/80 p-5 sm:p-7 shadow-sm">
+                {/* Bookmark Toggle */}
                 <button
-                  key={idx}
                   type="button"
-                  disabled={isAnsweringLocked}
-                  onClick={() => handleChoiceClick(idx)}
-                  className={`w-full min-h-[50px] p-3.5 rounded-xl border flex items-center text-left transition-all active:scale-[0.98] cursor-pointer ${btnStyles}`}
+                  onClick={handleToggleBookmark}
+                  title={isCurrentCardBookmarked ? 'Remove bookmark' : 'Bookmark this question'}
+                  className="absolute top-4 right-4 p-1.5 rounded-lg text-neutral-500 hover:text-[#00ff41] active:scale-90 transition-all"
                 >
-                  <span className="flex h-6 w-6 items-center justify-center rounded-md border border-neutral-700/80 bg-neutral-800/80 text-xs font-mono font-bold mr-3 shrink-0">
-                    {CHOICE_LETTERS[idx]}
-                  </span>
-                  <div
-                    className="flex-1 text-sm leading-normal break-words"
-                    dangerouslySetInnerHTML={{
-                      __html: renderMath(choice),
-                    }}
+                  <Bookmark
+                    size={18}
+                    className={isCurrentCardBookmarked ? 'fill-[#00ff41] text-[#00ff41]' : ''}
                   />
                 </button>
-              )
-            })}
+
+                <div className="flex items-center justify-between gap-2 mb-3 pr-8">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono font-semibold text-neutral-400 bg-neutral-950/60 px-2 py-0.5 rounded border border-neutral-800">
+                      Question #{cardIndex + 1}
+                    </span>
+                    {activeQuestion.card.subject && (
+                      <span className="text-[11px] font-mono font-semibold text-neutral-400 bg-neutral-950/60 px-2 py-0.5 rounded border border-neutral-800 uppercase">
+                        {activeQuestion.card.subject}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {activeQuestion.card.tosTopicId && (
+                      <span className="text-[11px] font-mono font-semibold text-[#00ff41] bg-[#00ff41]/10 px-2 py-0.5 rounded border border-[#00ff41]/20">
+                        {activeQuestion.card.tosTopicId}
+                      </span>
+                    )}
+                    {activeQuestion.mcq.yearAsked && (
+                      <span className="text-[10px] font-mono text-neutral-500">
+                        ECE Board {activeQuestion.mcq.yearAsked}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <h2
+                  className="text-base sm:text-lg font-medium text-neutral-100 leading-relaxed break-words"
+                  dangerouslySetInnerHTML={{ __html: questionHtml }}
+                />
+
+                {/* Inline Diagram */}
+                {activeImageSrc && (
+                  <div
+                    onClick={() => setLightboxSrc(activeImageSrc)}
+                    className="mt-4 flex justify-center overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/60 p-2 cursor-zoom-in active:scale-[0.98] transition-transform"
+                    title="Tap to zoom"
+                  >
+                    <img
+                      src={activeImageSrc}
+                      alt="Question diagram"
+                      loading="lazy"
+                      decoding="async"
+                      className="max-h-64 w-full object-contain rounded-lg"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Choices List */}
+              <div className="flex flex-col gap-2.5">
+                {activeQuestion.choices.map((_, idx) => {
+                  const letter = CHOICE_LETTERS[idx] || String.fromCharCode(65 + idx)
+                  const isCorrect = idx === activeQuestion.answerIndex
+                  const isSelected = selectedChoice === idx
+
+                  let btnStyle =
+                    'border-neutral-800 bg-neutral-900/60 text-neutral-200 hover:border-neutral-700 hover:bg-neutral-900'
+                  let badgeStyle = 'bg-neutral-950 text-neutral-400 border-neutral-800'
+
+                  if (isAnsweringLocked) {
+                    if (isCorrect) {
+                      btnStyle =
+                        'border-[#00ff41] bg-[#00ff41]/10 text-[#00ff41] shadow-[0_0_12px_rgba(0,255,65,0.15)] font-semibold'
+                      badgeStyle = 'bg-[#00ff41]/20 text-[#00ff41] border-[#00ff41]/40'
+                    } else if (isSelected) {
+                      btnStyle = 'border-red-500/80 bg-red-500/10 text-red-400 font-semibold'
+                      badgeStyle = 'bg-red-500/20 text-red-400 border-red-500/40'
+                    } else {
+                      btnStyle = 'border-neutral-800/40 bg-neutral-950/40 text-neutral-500 opacity-50'
+                      badgeStyle = 'bg-neutral-900/40 text-neutral-600 border-neutral-800/40'
+                    }
+                  }
+
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      disabled={isAnsweringLocked}
+                      onClick={() => handleChoiceClick(idx)}
+                      className={`flex items-start gap-3 rounded-xl border p-3.5 sm:p-4 text-left transition-all active:scale-[0.99] cursor-pointer ${btnStyle}`}
+                    >
+                      <span
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border font-mono text-xs font-bold leading-none ${badgeStyle}`}
+                      >
+                        {letter}
+                      </span>
+                      <span
+                        className="text-sm sm:text-base leading-snug break-words flex-1 pt-0.5"
+                        dangerouslySetInnerHTML={{
+                          __html: choicesHtml[idx] || '',
+                        }}
+                      />
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         </main>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-neutral-400">
-          <AlertCircle size={32} className="text-amber-400 mb-2" />
-          <p className="text-sm font-medium">No MCQ questions available in current deck selection.</p>
-          <button
-            type="button"
-            onClick={onExit}
-            className="mt-4 px-4 py-2 rounded-xl border border-neutral-800 bg-neutral-900 text-xs uppercase font-bold text-neutral-300"
-          >
-            Back to Gauntlet
-          </button>
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-900/60 p-8 text-center my-8 max-w-sm">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <AlertCircle size={24} />
+            </div>
+            <p className="text-sm font-medium text-neutral-200">
+              No MCQ questions available in current deck selection.
+            </p>
+            <button
+              type="button"
+              onClick={onExit}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-neutral-800 px-4 py-2 text-xs font-semibold text-neutral-200 hover:bg-neutral-700 active:scale-95 transition-all"
+            >
+              Back to Gauntlet
+            </button>
+          </div>
         </div>
       )}
 

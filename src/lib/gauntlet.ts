@@ -38,9 +38,12 @@ export const SURVIVAL_TIME_PRESETS = [
   { label: 'UNLIMITED', sec: 0 },
 ]
 
+export const LINGER_CORRECT_MS = 1800
+export const LINGER_WRONG_MS = 1800
+
 export const DEFAULT_GAUNTLET_CONFIG: GauntletArcadeConfig = {
   mode: 'survival',
-  subjects: ['MATH', 'GEAS', 'ELECS', 'EST'],
+  subjects: [],
   durationSec: 600,
   perQuestionSec: 30,
   startingLives: 3,

@@ -87,11 +87,13 @@ export async function closeDatabase(): Promise<void> {
     db = null
     currentDbPath = null
     hasTosColumn = null
+    cachedGauntletTablesExist = null
     invalidateTopicsCache()
   }
 }
 
 let hasTosColumn: boolean | null = null
+let cachedGauntletTablesExist: boolean | null = null
 
 async function checkTosColumnExists(): Promise<boolean> {
   if (hasTosColumn !== null) return hasTosColumn
@@ -99,6 +101,19 @@ async function checkTosColumnExists(): Promise<boolean> {
     const columns = await executeQuery<{ name: string }>('PRAGMA table_info(cards);')
     hasTosColumn = columns.some((col) => col.name === 'tos_topic_id')
     return hasTosColumn
+  } catch {
+    return false
+  }
+}
+
+async function checkGauntletTablesExist(): Promise<boolean> {
+  if (cachedGauntletTablesExist !== null) return cachedGauntletTablesExist
+  try {
+    const rows = await executeQuery<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('gauntlet_flagged_cards', 'gauntlet_allowed_cards');"
+    )
+    cachedGauntletTablesExist = rows.length === 2
+    return cachedGauntletTablesExist
   } catch {
     return false
   }
@@ -396,11 +411,56 @@ export const dbService = {
   },
 
   /**
-   * Fetch MCQ cards for Gauntlet arcade mode (filtered by selected subjects, or ALL subjects).
-   * Robustly matches both short abbreviations ('MATH') and full syllabus names ('Mathematics').
+   * Desktop port: exclude calculation and problem-solving questions in Gauntlet mode.
+   * 1. Cards with a solution image containing numbers/math.
+   * 2. Questions where choices are predominantly numerical / measurements.
+   * 3. Calculation stems ("Calculate...", "Determine...", "Compute...", "Find the...") with numeric choices.
+   * Concept questions (definitions, principles, theorems, and pure concept diagrams) remain playable.
    */
   getGauntletCards: async (subjectsInput: Subject[] | Subject | 'ALL' = 'ALL'): Promise<Card[]> => {
     const tosCol = (await checkTosColumnExists()) ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
+    const hasGauntletTables = await checkGauntletTablesExist()
+    const allowedOverride = hasGauntletTables
+      ? 'OR (c.id IN (SELECT card_id FROM gauntlet_allowed_cards))'
+      : ''
+    const flaggedFilter = hasGauntletTables
+      ? 'AND (c.id NOT IN (SELECT card_id FROM gauntlet_flagged_cards))'
+      : ''
+
+    const notProblemSolving = `(
+      NOT (
+        (json_extract(c.data, '$.solutionImagePath') IS NOT NULL AND json_extract(c.data, '$.solutionImagePath') != '' AND json_extract(c.data, '$.choices') GLOB '*[0-9]*')
+        OR
+        (
+          (
+            json_extract(c.data, '$.choices[0]') GLOB '[0-9]*'
+            OR json_extract(c.data, '$.choices[0]') GLOB '[-+.]*'
+            OR json_extract(c.data, '$.choices[0]') GLOB '([0-9]*'
+            OR json_extract(c.data, '$.choices[0]') GLOB '$*'
+          )
+          AND (
+            json_extract(c.data, '$.choices[1]') GLOB '[0-9]*'
+            OR json_extract(c.data, '$.choices[1]') GLOB '[-+.]*'
+            OR json_extract(c.data, '$.choices[1]') GLOB '([0-9]*'
+            OR json_extract(c.data, '$.choices[1]') GLOB '$*'
+          )
+        )
+        OR
+        (
+          json_extract(c.data, '$.choices') GLOB '*[0-9]*'
+          AND (
+            json_extract(c.data, '$.question') LIKE 'Calculate %'
+            OR json_extract(c.data, '$.question') LIKE 'Determine %'
+            OR json_extract(c.data, '$.question') LIKE 'Compute %'
+            OR json_extract(c.data, '$.question') LIKE 'Find the %'
+          )
+        )
+      )
+    )`
+
+    const validMcq = `(json_type(c.data, '$.choices') = 'array' AND json_array_length(c.data, '$.choices') >= 2)`
+    const conceptClause = `((${notProblemSolving} ${allowedOverride}) AND ${validMcq} ${flaggedFilter})`
+
     let sql: string
     let params: unknown[] = []
 
@@ -423,7 +483,7 @@ export const dbService = {
           t.name as deck_name, t.subject as subject
         FROM cards c
         JOIN topics t ON c.topic_id = t.id
-        WHERE c.type = 'mcq' AND t.subject IN (${placeholders})
+        WHERE c.type = 'mcq' AND t.subject IN (${placeholders}) AND ${conceptClause}
         ORDER BY RANDOM()
       `
       params = allowedNames
@@ -434,7 +494,7 @@ export const dbService = {
           t.name as deck_name, t.subject as subject
         FROM cards c
         JOIN topics t ON c.topic_id = t.id
-        WHERE c.type = 'mcq'
+        WHERE c.type = 'mcq' AND ${conceptClause}
         ORDER BY RANDOM()
       `
     }
@@ -444,14 +504,56 @@ export const dbService = {
   },
 
   /**
-   * Fetch available MCQ card counts per subject for Gauntlet setup buttons.
+   * Fetch available MCQ card counts per subject for Gauntlet setup buttons (concept-only).
    */
   getGauntletPoolSizes: async (): Promise<Record<Subject, number>> => {
+    const hasGauntletTables = await checkGauntletTablesExist()
+    const allowedOverride = hasGauntletTables
+      ? 'OR (c.id IN (SELECT card_id FROM gauntlet_allowed_cards))'
+      : ''
+    const flaggedFilter = hasGauntletTables
+      ? 'AND (c.id NOT IN (SELECT card_id FROM gauntlet_flagged_cards))'
+      : ''
+
+    const notProblemSolving = `(
+      NOT (
+        (json_extract(c.data, '$.solutionImagePath') IS NOT NULL AND json_extract(c.data, '$.solutionImagePath') != '' AND json_extract(c.data, '$.choices') GLOB '*[0-9]*')
+        OR
+        (
+          (
+            json_extract(c.data, '$.choices[0]') GLOB '[0-9]*'
+            OR json_extract(c.data, '$.choices[0]') GLOB '[-+.]*'
+            OR json_extract(c.data, '$.choices[0]') GLOB '([0-9]*'
+            OR json_extract(c.data, '$.choices[0]') GLOB '$*'
+          )
+          AND (
+            json_extract(c.data, '$.choices[1]') GLOB '[0-9]*'
+            OR json_extract(c.data, '$.choices[1]') GLOB '[-+.]*'
+            OR json_extract(c.data, '$.choices[1]') GLOB '([0-9]*'
+            OR json_extract(c.data, '$.choices[1]') GLOB '$*'
+          )
+        )
+        OR
+        (
+          json_extract(c.data, '$.choices') GLOB '*[0-9]*'
+          AND (
+            json_extract(c.data, '$.question') LIKE 'Calculate %'
+            OR json_extract(c.data, '$.question') LIKE 'Determine %'
+            OR json_extract(c.data, '$.question') LIKE 'Compute %'
+            OR json_extract(c.data, '$.question') LIKE 'Find the %'
+          )
+        )
+      )
+    )`
+
+    const validMcq = `(json_type(c.data, '$.choices') = 'array' AND json_array_length(c.data, '$.choices') >= 2)`
+    const conceptClause = `((${notProblemSolving} ${allowedOverride}) AND ${validMcq} ${flaggedFilter})`
+
     const sql = `
       SELECT t.subject, COUNT(c.id) as count
       FROM cards c
       JOIN topics t ON c.topic_id = t.id
-      WHERE c.type = 'mcq'
+      WHERE c.type = 'mcq' AND ${conceptClause}
       GROUP BY t.subject
     `
     const rows = await executeQuery<{ subject: string; count: number }>(sql)
