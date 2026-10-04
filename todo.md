@@ -35,3 +35,38 @@
   - **First Question Lag / Audio Prewarming**: Added `prewarmSounds()` to fetch and decode `wrongSfx`, `gameOverSfx`, and `plusOneSfx` into memory during countdown/idle rather than on the first question trigger. Upgraded animation keyframes in `src/index.css` to 3D GPU transforms (`translate3d(0, 0, 0)`, `scale3d`, `backface-visibility: hidden`).
   - **Survival Pillbox & Option Theme**: Changed the Survival mode tab pillbox, per-question time presets, difficulty multiplier, and start button in `GauntletArcadeHome.tsx` from green to crimson red (`text-red-400`, `border-red-500/50`, `bg-[#ef4444]`), matching the header flame icon.
   - **Unified Sound Toggle**: Removed the redundant secondary music toggle button from the Gauntlet header, keeping a single unified `Volume2`/`VolumeX` toggle that silences all audio.
+
+- [x] **Topic Focus Selection in Gauntlet (completed)**:
+  - Added multi-chapter topic focus selection matching desktop ECEngine with mobile-first ergonomics.
+  - **`GauntletTopicModal.tsx`**:
+    - Modal sheet with Android back gesture/button interception (`CapacitorApp.addListener('backButton')`).
+    - Sticky search input (`name`, `code`, or `subject`) with clear button.
+    - Toggle between 34 Parent Topics (`x.0`) and 181 Granular Subtopics (`x.x`).
+    - Subject filter pills (`ALL`, `MATH`, `GEAS`, `ELECS`, `EST`) with theme colors.
+    - Bulk selection controls: `Select All / Tab`, `Deselect All / Tab`, and `Reset All`.
+    - Single-column touch cards ($\ge 48$px touch target, custom neon checkbox, subject tag, code, and title).
+    - Sticky bottom bar showing pool status (`All Topics (Pool)` vs `N Topics Selected`), `Cancel`, and glowing `Apply` button.
+  - **Setup Screen & Subject Sync (`GauntletArcadeHome.tsx`)**:
+    - "TOPIC FOCUS" card with pulsing status dot and `Filter Topics` / `Edit Topics` action.
+    - Selected topic preview chips with subject badge, code, title, and individual remove (X) button.
+    - Auto-merges selected topic subjects into active subjects pool.
+    - Deselecting a subject toggle on setup automatically trims that subject's topics from the topic filter.
+    - Dynamic pool counter updates (`dbService.getGauntletPoolSizes(config.tosTopicIds)`).
+  - **Database & Session Filtering (`db.service.ts` & `App.tsx`)**:
+    - `buildTosTopicClause` handles parent topic prefix matching (`c.tos_topic_id LIKE 'prefix.%'`) and granular subtopic matching (`c.tos_topic_id = ?`).
+    - `getGauntletCards` and `getGauntletPoolSizes` query questions strictly from chosen topics.
+    - Deployed and verified on connected Android device via ADB.
+
+- [x] **Android Back Gesture on Survival / Time Trial Setup (completed)**:
+  - Added Capacitor `backButton` hardware/gesture listener in [`GauntletArcadeHome.tsx`](file:///home/delata/Shared/Projects/ecengine_companion/src/components/gauntlet/GauntletArcadeHome.tsx).
+  - Tapping Android back or swiping the back gesture now smoothly exits Survival / Time Trial setup and returns to the previous study mode (e.g. LooksFam, Flashcards, or Formulas) via `previousModeRef` in [`TopicBrowser.tsx`](file:///home/delata/Shared/Projects/ecengine_companion/src/pages/TopicBrowser.tsx).
+  - If the Topic Focus Selection modal is open, the back gesture closes the modal first without exiting setup.
+  - Successfully built, deployed, and launched on connected Android device.
+
+- [x] **Table of Specifications (ToS) Topics Port to Companion (completed)**:
+  - **Segmented View Mode Toggle**: Added `Custom Decks | ToS Topics` segmented toggle in LooksFam header in [`TopicBrowser.tsx`](file:///home/delata/Shared/Projects/ecengine_companion/src/pages/TopicBrowser.tsx).
+  - **Virtual ToS Topics**: Derived all 181 decimal subtopics from [`tosClassification.ts`](file:///home/delata/Shared/Projects/ecengine_companion/src/lib/tosClassification.ts) enriched with card counts and mastery from SQLite DB.
+  - **ToS Hierarchy Drawer**: Created [`TosTopicDrawer.tsx`](file:///home/delata/Shared/Projects/ecengine_companion/src/components/TosTopicDrawer.tsx) supporting collapsible subject roots (`MATH`, `GEAS`, `ELECS`, `EST`) and indented parent topics (`1.0`, `2.0`, etc.) when `activeSubject === 'ALL'`, and flattened parent topic list when a specific subject filter is active.
+  - **Database Service Enhancements**: Added `getTosTopicStats()` in [`db.service.ts`](file:///home/delata/Shared/Projects/ecengine_companion/src/services/db.service.ts), and updated `getCardsWithProgress()`, `getCards()`, and `getAllCardsByTopic()` to natively support virtual `tos_*` topic IDs by querying `c.tos_topic_id`.
+  - **Full Study Parity**: Learn Mode, Test Mode, and Test Paper View (PrintView) work seamlessly on all 181 ToS subtopics.
+  - **Clean Build**: Verified TypeScript compilation and production bundle build with zero errors.

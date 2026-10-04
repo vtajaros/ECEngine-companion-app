@@ -16,6 +16,7 @@ import {
   Check,
   Star,
   Swords,
+  BookOpen,
 } from 'lucide-react'
 import { GauntletArcadeHome } from '../components/gauntlet/GauntletArcadeHome'
 import type { GauntletArcadeConfig } from '../lib/gauntlet'
@@ -27,11 +28,28 @@ import { LearnSettingsModal, LearnSettings, DEFAULT_LEARN_SETTINGS } from '../co
 import { TestSettingsModal, DEFAULT_TEST_SETTINGS } from '../components/TestSettingsModal'
 import { FlashcardSettingsModal, FlashcardSettings, DEFAULT_FLASHCARD_SETTINGS } from '../components/FlashcardSettingsModal'
 import { FolderDrawer } from '../components/FolderDrawer'
+import { TosTopicDrawer } from '../components/TosTopicDrawer'
+import { ALL_TOS_SUBTOPICS, ALL_PARENT_TOS_TOPICS, type FlatTosTopic } from '../lib/tosClassification'
 import type { TestSettings } from '../pages/TestMode'
 import appIcon from '../assets/images/ecengine-icon.png'
 
 export type BrowserMode = 'looksfam' | 'test' | 'testpaper' | 'flashcards' | 'formulas' | 'gauntlet'
+export type DeckViewMode = 'custom' | 'tos'
 export type DeckType = 'mcq' | 'flashcard' | 'formula' | 'mixed' | null
+
+function getTosSubtreeIds(folderId: string, rows: Array<{ id: string; parent_id?: string | null }>): Set<string> {
+  const result = new Set<string>([folderId])
+  const addChildren = (pid: string) => {
+    for (const r of rows) {
+      if (r.parent_id === pid) {
+        result.add(r.id)
+        addChildren(r.id)
+      }
+    }
+  }
+  addChildren(folderId)
+  return result
+}
 
 /**
  * Classifies a topic into a deckType based on its comma-separated types string.
@@ -393,16 +411,20 @@ const TopicCard = memo(function TopicCard({
       {/* Bottom Row: Action Buttons — only shown in looksfam mode */}
       {mode === 'looksfam' && (
         <div className="mt-3.5 flex items-center justify-between gap-2 pt-2.5 border-t border-neutral-800/60">
-          <button
-            type="button"
-            onClick={(e) => onToggleFavorite(e, topic)}
-            className={`p-1.5 rounded-md transition-all active:scale-90 ${
-              isFavorite ? 'text-[#00ff41]' : 'text-neutral-600 hover:text-neutral-400'
-            }`}
-            title="Toggle Favorite"
-          >
-            <Star size={16} className={isFavorite ? 'fill-[#00ff41]' : ''} />
-          </button>
+          {!topic.id.startsWith('tos_') ? (
+            <button
+              type="button"
+              onClick={(e) => onToggleFavorite(e, topic)}
+              className={`p-1.5 rounded-md transition-all active:scale-90 ${
+                isFavorite ? 'text-[#00ff41]' : 'text-neutral-600 hover:text-neutral-400'
+              }`}
+              title="Toggle Favorite"
+            >
+              <Star size={16} className={isFavorite ? 'fill-[#00ff41]' : ''} />
+            </button>
+          ) : (
+            <div className="w-7" />
+          )}
 
           <div className="flex items-center gap-2">
             <button
@@ -513,6 +535,10 @@ export function TopicBrowser({
   onOpenSettings,
 }: TopicBrowserProps = {}) {
   const [localMode, setLocalMode] = useState<BrowserMode>('looksfam')
+  const [deckViewMode, setDeckViewMode] = useState<DeckViewMode>('custom')
+  const [selectedTosFolder, setSelectedTosFolder] = useState<string | 'all'>('all')
+  const [isTosDrawerOpen, setIsTosDrawerOpen] = useState<boolean>(false)
+  const [tosTopicStats, setTosTopicStats] = useState<Record<string, { totalCards: number; correctAnswers: number; totalAnswers: number; mastery: number }>>({})
   const [localFolders] = useState<Folder[]>([])
   const [localFormulaFolders] = useState<Folder[]>([])
   const [localSelectedFolderId, setLocalSelectedFolderId] = useState<string | 'all'>('all')
@@ -576,6 +602,13 @@ export function TopicBrowser({
   const mode = controlledMode ?? localMode
   const setMode = onModeChange ?? setLocalMode
 
+  const previousModeRef = useRef<BrowserMode>('looksfam')
+  useEffect(() => {
+    if (mode !== 'gauntlet') {
+      previousModeRef.current = mode
+    }
+  }, [mode])
+
   const searchQuery = controlledSearchQuery ?? localSearchQuery
   const setSearchQuery = onSearchQueryChange ?? setLocalSearchQuery
 
@@ -602,12 +635,16 @@ export function TopicBrowser({
     setIsLoading(true)
     setError(null)
     try {
-      const data = await dbService.getTopicsWithCardCounts()
+      const [data, tosStats] = await Promise.all([
+        dbService.getTopicsWithCardCounts(),
+        dbService.getTosTopicStats().catch(() => ({})),
+      ])
       const normalizedTopics = data.map((t) => ({
         ...t,
         subject: SUBJECT_MAP[t.subject] || t.subject,
       }))
       setTopics(normalizedTopics)
+      setTosTopicStats(tosStats)
     } catch (err: unknown) {
       console.warn('[TopicBrowser] Error fetching topics:', err)
       const msg = err instanceof Error ? err.message : String(err)
@@ -663,8 +700,92 @@ export function TopicBrowser({
     }
   }, [isLoading, scrollPosition, onScrollPositionChange])
 
+  // Virtual decimal study sets computed from PRC Table of Specifications taxonomy
+  const virtualTosTopics = useMemo<TopicWithCardCount[]>(() => {
+    const parentMap = new Map<string, FlatTosTopic>()
+    for (const p of ALL_PARENT_TOS_TOPICS) {
+      parentMap.set(p.id.toUpperCase().trim(), p)
+    }
+    const total = ALL_TOS_SUBTOPICS.length
+    return ALL_TOS_SUBTOPICS.map((sub, index) => {
+      const stat = tosTopicStats[sub.id.toUpperCase().trim()]
+      const parent = sub.parentTopicId ? parentMap.get(sub.parentTopicId.toUpperCase().trim()) : null
+      const parentName = parent ? parent.name : ''
+      return {
+        id: `tos_${sub.id}`,
+        name: sub.name,
+        subject: sub.subject,
+        description: parentName ? `${parentName} • PRC Board Exam Syllabus` : 'PRC Board Exam Syllabus',
+        cardCount: stat?.totalCards ?? 0,
+        tags: ['Syllabus', sub.code, ...(parent ? [parent.code] : [])],
+        folderId: sub.parentTopicId ? `tos_parent_${sub.parentTopicId}` : null,
+        folderName: parentName || 'ToS Topics',
+        parentId: null,
+        types: 'mcq',
+        createdAt: total - index,
+        orderIndex: index,
+        isFavorite: false,
+      }
+    })
+  }, [tosTopicStats])
+
+  const tosFolderRows = useMemo(() => {
+    if (selectedSubject === 'ALL') {
+      const subjectRoots = [
+        { id: 'tos_subj_MATH', name: 'Mathematics', parent_id: null, order_index: 0 },
+        { id: 'tos_subj_GEAS', name: 'GEAS', parent_id: null, order_index: 1 },
+        { id: 'tos_subj_ELECS', name: 'ELECS', parent_id: null, order_index: 2 },
+        { id: 'tos_subj_EST', name: 'EST', parent_id: null, order_index: 3 },
+      ]
+      const parentTopics = ALL_PARENT_TOS_TOPICS.map((p, idx) => ({
+        id: `tos_parent_${p.id}`,
+        name: p.name,
+        parent_id: `tos_subj_${p.subject}`,
+        order_index: idx,
+      }))
+      return [...subjectRoots, ...parentTopics]
+    } else {
+      const filtered = ALL_PARENT_TOS_TOPICS.filter((p) => p.subject === selectedSubject)
+      return filtered.map((p, idx) => ({
+        id: `tos_parent_${p.id}`,
+        name: p.name,
+        parent_id: null,
+        order_index: idx,
+      }))
+    }
+  }, [selectedSubject])
+
+  const tosDeckCountByFolder = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const t of virtualTosTopics) {
+      if (t.folderId) {
+        counts[t.folderId] = (counts[t.folderId] ?? 0) + 1
+      }
+    }
+    return counts
+  }, [virtualTosTopics])
+
+  // Resolve effective ToS folder: if a folder belongs to a different subject than selectedSubject, fallback to 'all'
+  const effectiveTosFolder = useMemo(() => {
+    if (selectedTosFolder === 'all' || selectedSubject === 'ALL') {
+      return selectedTosFolder
+    }
+    if (selectedTosFolder.startsWith('tos_subj_')) {
+      return selectedTosFolder === `tos_subj_${selectedSubject}` ? selectedTosFolder : 'all'
+    }
+    if (selectedTosFolder.startsWith('tos_parent_')) {
+      const parentId = selectedTosFolder.replace(/^tos_parent_/, '')
+      const parent = ALL_PARENT_TOS_TOPICS.find((p) => p.id === parentId)
+      return parent && parent.subject === selectedSubject ? selectedTosFolder : 'all'
+    }
+    return selectedTosFolder
+  }, [selectedTosFolder, selectedSubject])
+
   // Filter topics for current mode
   const topicsForMode = useMemo(() => {
+    if (mode === 'looksfam' && deckViewMode === 'tos') {
+      return virtualTosTopics
+    }
     return topics.filter((t) => {
       const deckType = getTopicDeckType(t.types)
       if (!deckType) return false
@@ -680,14 +801,19 @@ export function TopicBrowser({
       }
       return false
     })
-  }, [topics, mode])
+  }, [topics, mode, deckViewMode, virtualTosTopics])
 
   // Topics matching the current mode + folder selection (subject/search
   // filters are applied after this, in filteredTopics below)
   const folderFilteredTopics = useMemo(() => {
+    if (mode === 'looksfam' && deckViewMode === 'tos') {
+      if (effectiveTosFolder === 'all') return topicsForMode
+      const subtreeIds = getTosSubtreeIds(effectiveTosFolder, tosFolderRows)
+      return topicsForMode.filter((t) => t.folderId && subtreeIds.has(t.folderId))
+    }
     if (!effectiveFolderIds) return topicsForMode
     return topicsForMode.filter((t) => t.folderId && effectiveFolderIds.has(t.folderId))
-  }, [topicsForMode, effectiveFolderIds])
+  }, [mode, deckViewMode, effectiveTosFolder, tosFolderRows, topicsForMode, effectiveFolderIds])
 
   // Per-folder item counts, computed from topicsForMode (mode-filtered but
   // NOT folder-filtered — these are facet totals, same convention as
@@ -963,7 +1089,7 @@ export function TopicBrowser({
           <GauntletArcadeHome
             cardCount={topics.reduce((acc, t) => acc + t.cardCount, 0)}
             onStartRun={(cfg) => onStartGauntlet?.(cfg)}
-            onExit={() => setMode('looksfam')}
+            onExit={() => setMode(previousModeRef.current || 'looksfam')}
           />
         </div>
       ) : (
@@ -989,29 +1115,41 @@ export function TopicBrowser({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {!(mode === 'looksfam' && deckViewMode === 'tos') && (
+              <button
+                type="button"
+                onClick={() => setFavoritesOnly((prev) => !prev)}
+                className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
+                  favoritesOnly
+                    ? 'border-[#00ff41]/60 bg-[#00ff41]/20 text-[#00ff41] shadow-[0_0_16px_rgba(0,255,65,0.25)]'
+                    : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-neutral-200'
+                }`}
+                title="Favorites Only"
+              >
+                <Star size={15} className={favoritesOnly ? 'fill-[#00ff41]' : ''} />
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setFavoritesOnly((prev) => !prev)}
-              className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
-                favoritesOnly
-                  ? 'border-[#00ff41]/60 bg-[#00ff41]/20 text-[#00ff41] shadow-[0_0_16px_rgba(0,255,65,0.25)]'
-                  : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-neutral-200'
-              }`}
-              title="Favorites Only"
-            >
-              <Star size={15} className={favoritesOnly ? 'fill-[#00ff41]' : ''} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsFolderDrawerOpen(true)}
-              title="Folders"
+              onClick={() => {
+                if (mode === 'looksfam' && deckViewMode === 'tos') {
+                  setIsTosDrawerOpen(true)
+                } else {
+                  setIsFolderDrawerOpen(true)
+                }
+              }}
+              title={mode === 'looksfam' && deckViewMode === 'tos' ? 'ToS Topics' : 'Folders'}
               className={`p-1.5 rounded-lg border bg-neutral-900 active:scale-95 transition-all ${
-                selectedFolderId !== 'all'
+                (mode === 'looksfam' && deckViewMode === 'tos' ? effectiveTosFolder !== 'all' : selectedFolderId !== 'all')
                   ? 'border-[#00ff41]/50 text-[#00ff41] shadow-[0_0_8px_rgba(0,255,65,0.25)]'
                   : 'border-neutral-800 text-neutral-400 hover:text-[#00ff41]'
               }`}
             >
-              <FolderIcon size={15} />
+              {mode === 'looksfam' && deckViewMode === 'tos' ? (
+                <BookOpen size={15} />
+              ) : (
+                <FolderIcon size={15} />
+              )}
             </button>
             <div className="relative">
               <button
@@ -1069,6 +1207,48 @@ export function TopicBrowser({
             )}
           </div>
         </div>
+
+        {/* LooksFam Segmented View Mode Toggle: Custom Decks vs ToS Topics */}
+        {mode === 'looksfam' && (
+          <div className="mx-auto mt-2.5 max-w-5xl flex justify-center">
+            <div className="inline-flex rounded-xl bg-neutral-900 border border-neutral-800 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (deckViewMode !== 'custom') {
+                    setDeckViewMode('custom')
+                    setSelectedFolderId('all')
+                    setSelectedSubject('ALL')
+                  }
+                }}
+                className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-lg transition-all active:scale-95 ${
+                  deckViewMode === 'custom'
+                    ? 'bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/30 shadow-[0_0_8px_rgba(0,255,65,0.2)] font-bold'
+                    : 'text-neutral-400 hover:text-neutral-200 border border-transparent'
+                }`}
+              >
+                Custom Decks
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (deckViewMode !== 'tos') {
+                    setDeckViewMode('tos')
+                    setSelectedTosFolder('all')
+                    setSelectedSubject('ALL')
+                  }
+                }}
+                className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-lg transition-all active:scale-95 ${
+                  deckViewMode === 'tos'
+                    ? 'bg-[#00ff41]/10 text-[#00ff41] border border-[#00ff41]/30 shadow-[0_0_8px_rgba(0,255,65,0.2)] font-bold'
+                    : 'text-neutral-400 hover:text-neutral-200 border border-transparent'
+                }`}
+              >
+                ToS Topics
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Search Input */}
         <div className="mx-auto mt-3 max-w-5xl">
@@ -1185,6 +1365,11 @@ export function TopicBrowser({
                 onClick={() => {
                   setSearchQuery('')
                   setSelectedSubject('ALL')
+                  if (deckViewMode === 'tos') {
+                    setSelectedTosFolder('all')
+                  } else {
+                    setSelectedFolderId('all')
+                  }
                 }}
                 className="mt-3 text-xs font-medium text-[#00ff41] hover:text-[#00ff41]/80 underline"
               >
@@ -1338,6 +1523,20 @@ export function TopicBrowser({
         selectedFolderId={selectedFolderId}
         onSelect={setSelectedFolderId}
         folderCounts={folderCounts}
+      />
+
+      {/* ToS Topic Drawer */}
+      <TosTopicDrawer
+        isOpen={isTosDrawerOpen}
+        onClose={() => setIsTosDrawerOpen(false)}
+        selectedTosFolder={effectiveTosFolder}
+        onSelect={(id) => {
+          setSelectedTosFolder(id)
+          setIsTosDrawerOpen(false)
+        }}
+        tosDeckCountByFolder={tosDeckCountByFolder}
+        totalCount={virtualTosTopics.length}
+        activeSubject={selectedSubject}
       />
     </div>
   )

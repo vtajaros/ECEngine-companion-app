@@ -292,6 +292,30 @@ const IMAGE_DATA_KEYS = [
   'explanationImagePath',
 ] as const
 
+function buildTosTopicClause(topicIds?: string[]): { clause: string; params: string[] } {
+  if (!topicIds || topicIds.length === 0) {
+    return { clause: '1=1', params: [] }
+  }
+  const clauses: string[] = []
+  const params: string[] = []
+
+  for (const tid of topicIds) {
+    if (tid.endsWith('.0')) {
+      const prefix = tid.replace(/\.0$/, '')
+      clauses.push('(c.tos_topic_id = ? OR c.tos_topic_id LIKE ?)')
+      params.push(tid, `${prefix}.%`)
+    } else {
+      clauses.push('c.tos_topic_id = ?')
+      params.push(tid)
+    }
+  }
+
+  return {
+    clause: `(${clauses.join(' OR ')})`,
+    params,
+  }
+}
+
 // ── Service Implementation ──────────────────────────────────────────────────
 
 export const dbService = {
@@ -344,9 +368,31 @@ export const dbService = {
 
   /**
    * Fetch cards for a specific topic, joined with SM-2 progress details.
+   * Supports both custom DB topic IDs and virtual ToS topic IDs ('tos_*').
    */
   getCardsWithProgress: async (topicId: string): Promise<Card[]> => {
-    const tosCol = (await checkTosColumnExists()) ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
+    const hasTos = await checkTosColumnExists()
+
+    if (topicId.startsWith('tos_')) {
+      if (!hasTos) return []
+      const tosTopicId = topicId.replace(/^tos_/, '')
+      const { clause: topicClause, params: topicParams } = buildTosTopicClause([tosTopicId])
+      const sql = `
+        SELECT 
+          c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, c.tos_topic_id, c.is_custom, c.order_index, c.created_at,
+          p.ease_factor, p.interval, p.repetitions, p.next_review, p.last_reviewed, p.correct_count, p.total_count, p.last_result,
+          t.name as deck_name, t.subject as subject
+        FROM cards c
+        LEFT JOIN progress p ON c.id = p.card_id
+        LEFT JOIN topics t ON c.topic_id = t.id
+        WHERE c.type = 'mcq' AND ${topicClause}
+        ORDER BY c.order_index ASC, c.created_at ASC
+      `
+      const rows = await executeQuery(sql, topicParams)
+      return z.array(CardWithProgressRowSchema).parse(rows).map(row => parseCardRow(row, topicId))
+    }
+
+    const tosCol = hasTos ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
     const sql = `
       SELECT 
         c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, ${tosCol}, c.is_custom, c.order_index, c.created_at,
@@ -362,9 +408,31 @@ export const dbService = {
 
   /**
    * Fetch cards (optionally filtered by topic), joined with SM-2 progress details.
+   * Supports both custom DB topic IDs and virtual ToS topic IDs ('tos_*').
    */
   getCards: async (topicId?: string): Promise<Card[]> => {
-    const tosCol = (await checkTosColumnExists()) ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
+    const hasTos = await checkTosColumnExists()
+
+    if (topicId && topicId.startsWith('tos_')) {
+      if (!hasTos) return []
+      const tosTopicId = topicId.replace(/^tos_/, '')
+      const { clause: topicClause, params: topicParams } = buildTosTopicClause([tosTopicId])
+      const sql = `
+        SELECT 
+          c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, c.tos_topic_id, c.is_custom, c.order_index, c.created_at,
+          p.ease_factor, p.interval, p.repetitions, p.next_review, p.last_reviewed, p.correct_count, p.total_count, p.last_result,
+          t.name as deck_name, t.subject as subject
+        FROM cards c
+        LEFT JOIN progress p ON c.id = p.card_id
+        LEFT JOIN topics t ON c.topic_id = t.id
+        WHERE c.type = 'mcq' AND ${topicClause}
+        ORDER BY c.order_index ASC, c.created_at ASC
+      `
+      const rows = await executeQuery(sql, topicParams)
+      return z.array(CardWithProgressRowSchema).parse(rows).map(row => parseCardRow(row, topicId))
+    }
+
+    const tosCol = hasTos ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
     let sql: string
     let params: unknown[] = []
 
@@ -396,9 +464,29 @@ export const dbService = {
 
   /**
    * Fetch all cards for a specific topic without progress join, ordered by order_index.
+   * Supports both custom DB topic IDs and virtual ToS topic IDs ('tos_*').
    */
   getAllCardsByTopic: async (topicId: string): Promise<Card[]> => {
-    const tosCol = (await checkTosColumnExists()) ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
+    const hasTos = await checkTosColumnExists()
+
+    if (topicId.startsWith('tos_')) {
+      if (!hasTos) return []
+      const tosTopicId = topicId.replace(/^tos_/, '')
+      const { clause: topicClause, params: topicParams } = buildTosTopicClause([tosTopicId])
+      const sql = `
+        SELECT 
+          c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, c.tos_topic_id, c.is_custom, c.order_index, c.created_at,
+          t.name as deck_name, t.subject as subject
+        FROM cards c
+        LEFT JOIN topics t ON c.topic_id = t.id
+        WHERE c.type = 'mcq' AND ${topicClause}
+        ORDER BY c.order_index ASC, c.created_at ASC
+      `
+      const rows = await executeQuery(sql, topicParams)
+      return z.array(CardRowSchema).parse(rows).map(row => parseCardRow(row, topicId))
+    }
+
+    const tosCol = hasTos ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
     const sql = `
       SELECT 
         c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, ${tosCol}, c.is_custom, c.order_index, c.created_at
@@ -411,14 +499,58 @@ export const dbService = {
   },
 
   /**
+   * Fetch MCQ card counts and SM-2 progress statistics grouped by Table of Specifications (TOS) topic ID.
+   */
+  getTosTopicStats: async (): Promise<Record<string, { totalCards: number; correctAnswers: number; totalAnswers: number; mastery: number }>> => {
+    const hasTos = await checkTosColumnExists()
+    if (!hasTos) return {}
+
+    const sql = `
+      SELECT c.tos_topic_id,
+             COUNT(c.id) as total_cards,
+             SUM(COALESCE(p.correct_count, 0)) as correct_answers,
+             SUM(COALESCE(p.total_count, 0)) as total_answers
+      FROM cards c
+      LEFT JOIN progress p ON c.id = p.card_id
+      WHERE c.type = 'mcq' AND c.tos_topic_id IS NOT NULL AND c.tos_topic_id != ''
+      GROUP BY c.tos_topic_id
+    `
+    const rows = await executeQuery<{
+      tos_topic_id: string
+      total_cards: number
+      correct_answers: number
+      total_answers: number
+    }>(sql)
+
+    const result: Record<string, { totalCards: number; correctAnswers: number; totalAnswers: number; mastery: number }> = {}
+    for (const r of rows) {
+      if (!r.tos_topic_id) continue
+      const totalAnswers = r.total_answers ?? 0
+      const correctAnswers = r.correct_answers ?? 0
+      const mastery = totalAnswers > 0 ? Math.round((correctAnswers / totalAnswers) * 100) : 0
+      result[r.tos_topic_id.toUpperCase().trim()] = {
+        totalCards: r.total_cards ?? 0,
+        correctAnswers,
+        totalAnswers,
+        mastery,
+      }
+    }
+    return result
+  },
+
+  /**
    * Desktop port: exclude calculation and problem-solving questions in Gauntlet mode.
    * 1. Cards with a solution image containing numbers/math.
    * 2. Questions where choices are predominantly numerical / measurements.
    * 3. Calculation stems ("Calculate...", "Determine...", "Compute...", "Find the...") with numeric choices.
    * Concept questions (definitions, principles, theorems, and pure concept diagrams) remain playable.
    */
-  getGauntletCards: async (subjectsInput: Subject[] | Subject | 'ALL' = 'ALL'): Promise<Card[]> => {
-    const tosCol = (await checkTosColumnExists()) ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
+  getGauntletCards: async (
+    subjectsInput: Subject[] | Subject | 'ALL' = 'ALL',
+    tosTopicIds?: string[],
+  ): Promise<Card[]> => {
+    const hasTos = await checkTosColumnExists()
+    const tosCol = hasTos ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
     const hasGauntletTables = await checkGauntletTablesExist()
     const allowedOverride = hasGauntletTables
       ? 'OR (c.id IN (SELECT card_id FROM gauntlet_allowed_cards))'
@@ -461,8 +593,12 @@ export const dbService = {
     const validMcq = `(json_type(c.data, '$.choices') = 'array' AND json_array_length(c.data, '$.choices') >= 2)`
     const conceptClause = `((${notProblemSolving} ${allowedOverride}) AND ${validMcq} ${flaggedFilter})`
 
+    const { clause: topicClause, params: topicParams } = hasTos
+      ? buildTosTopicClause(tosTopicIds)
+      : { clause: '1=1', params: [] }
+
     let sql: string
-    let params: unknown[] = []
+    let params: unknown[]
 
     const subjects: Subject[] = Array.isArray(subjectsInput)
       ? subjectsInput
@@ -483,10 +619,10 @@ export const dbService = {
           t.name as deck_name, t.subject as subject
         FROM cards c
         JOIN topics t ON c.topic_id = t.id
-        WHERE c.type = 'mcq' AND t.subject IN (${placeholders}) AND ${conceptClause}
+        WHERE c.type = 'mcq' AND t.subject IN (${placeholders}) AND ${conceptClause} AND ${topicClause}
         ORDER BY RANDOM()
       `
-      params = allowedNames
+      params = [...allowedNames, ...topicParams]
     } else {
       sql = `
         SELECT 
@@ -494,9 +630,10 @@ export const dbService = {
           t.name as deck_name, t.subject as subject
         FROM cards c
         JOIN topics t ON c.topic_id = t.id
-        WHERE c.type = 'mcq' AND ${conceptClause}
+        WHERE c.type = 'mcq' AND ${conceptClause} AND ${topicClause}
         ORDER BY RANDOM()
       `
+      params = topicParams
     }
 
     const rows = await executeQuery(sql, params)
@@ -505,8 +642,10 @@ export const dbService = {
 
   /**
    * Fetch available MCQ card counts per subject for Gauntlet setup buttons (concept-only).
+   * Supports dynamic filtering by selected TOS topic IDs.
    */
-  getGauntletPoolSizes: async (): Promise<Record<Subject, number>> => {
+  getGauntletPoolSizes: async (tosTopicIds?: string[]): Promise<Record<Subject, number>> => {
+    const hasTos = await checkTosColumnExists()
     const hasGauntletTables = await checkGauntletTablesExist()
     const allowedOverride = hasGauntletTables
       ? 'OR (c.id IN (SELECT card_id FROM gauntlet_allowed_cards))'
@@ -549,14 +688,18 @@ export const dbService = {
     const validMcq = `(json_type(c.data, '$.choices') = 'array' AND json_array_length(c.data, '$.choices') >= 2)`
     const conceptClause = `((${notProblemSolving} ${allowedOverride}) AND ${validMcq} ${flaggedFilter})`
 
+    const { clause: topicClause, params: topicParams } = hasTos
+      ? buildTosTopicClause(tosTopicIds)
+      : { clause: '1=1', params: [] }
+
     const sql = `
       SELECT t.subject, COUNT(c.id) as count
       FROM cards c
       JOIN topics t ON c.topic_id = t.id
-      WHERE c.type = 'mcq' AND ${conceptClause}
+      WHERE c.type = 'mcq' AND ${conceptClause} AND ${topicClause}
       GROUP BY t.subject
     `
-    const rows = await executeQuery<{ subject: string; count: number }>(sql)
+    const rows = await executeQuery<{ subject: string; count: number }>(sql, topicParams)
     const result: Record<Subject, number> = {
       MATH: 0,
       GEAS: 0,

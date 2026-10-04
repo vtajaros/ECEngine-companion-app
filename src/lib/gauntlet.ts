@@ -16,6 +16,8 @@ export interface GauntletArcadeConfig {
   durationSec: number        // For Time Trial: 300 (5m), 600 (10m), 1500 (25m), 3600 (1 hr)
   perQuestionSec: number     // For Survival: 30, 60, 120, 0 (0 = unlimited)
   startingLives: number      // For Survival: 3, 5, 0 (0 = unlimited)
+  tosTopicIds?: string[]     // Optional array of selected TOS topic IDs
+  tosTopicId?: string | null // Primary topic ID if single or first selected
 }
 
 export const DURATION_PRESETS = [
@@ -47,6 +49,8 @@ export const DEFAULT_GAUNTLET_CONFIG: GauntletArcadeConfig = {
   durationSec: 600,
   perQuestionSec: 30,
   startingLives: 3,
+  tosTopicIds: [],
+  tosTopicId: null,
 }
 
 export const TUNING = {

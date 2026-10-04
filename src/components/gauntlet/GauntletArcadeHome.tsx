@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   Flame,
   Timer,
@@ -7,7 +7,10 @@ import {
   Zap,
   Play,
   Trophy,
+  Layers,
+  X,
 } from 'lucide-react'
+import { App as CapacitorApp } from '@capacitor/app'
 import { Subject } from '../../types'
 import {
   GauntletArcadeConfig,
@@ -19,6 +22,8 @@ import {
 import { gauntletStorageService, GauntletStats } from '../../services/gauntlet-storage.service'
 import { dbService } from '../../services/db.service'
 import { SUBJECT_THEME_COLORS } from '../../lib/subjectColors'
+import { ALL_TOS_TOPICS } from '../../lib/tosClassification'
+import { GauntletTopicModal } from './GauntletTopicModal'
 
 interface GauntletArcadeHomeProps {
   onStartRun: (config: GauntletArcadeConfig) => void
@@ -27,6 +32,13 @@ interface GauntletArcadeHomeProps {
 }
 
 const SUBJECTS: Subject[] = ['MATH', 'GEAS', 'ELECS', 'EST']
+
+const SUBJECT_COLOR: Record<Subject, string> = {
+  MATH: '#f59e0b',
+  GEAS: '#3b82f6',
+  ELECS: '#ef4444',
+  EST: '#22c55e',
+}
 
 export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
   onStartRun,
@@ -40,19 +52,92 @@ export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
     ELECS: 0,
     EST: 0,
   })
+  const [isTopicModalOpen, setIsTopicModalOpen] = useState(false)
+
+  const hasActiveTopics = (config.tosTopicIds || []).length > 0
+  const selectedCount = config.tosTopicIds?.length || 0
+
+  const isTopicModalOpenRef = useRef(isTopicModalOpen)
+  isTopicModalOpenRef.current = isTopicModalOpen
+
+  // Intercept Android hardware / gesture back button to exit setup (or close topic modal if open)
+  useEffect(() => {
+    const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      if (isTopicModalOpenRef.current) {
+        setIsTopicModalOpen(false)
+      } else {
+        onExit()
+      }
+    })
+    return () => {
+      listenerPromise.then((handle) => handle.remove()).catch(() => {})
+    }
+  }, [onExit])
 
   useEffect(() => {
     gauntletStorageService.getStats().then(setStats)
-    dbService.getGauntletPoolSizes().then(setPoolSizes).catch(() => {})
   }, [])
+
+  // Dynamically update card counts whenever selected topics change
+  useEffect(() => {
+    dbService
+      .getGauntletPoolSizes(config.tosTopicIds)
+      .then(setPoolSizes)
+      .catch(() => {})
+  }, [config.tosTopicIds])
+
+  const handleApplyTopics = (topicIds: string[]) => {
+    if (topicIds.length === 0) {
+      setConfig((prev) => ({
+        ...prev,
+        tosTopicIds: [],
+        tosTopicId: null,
+      }))
+      return
+    }
+
+    const topicSubjects = new Set<Subject>()
+    for (const tid of topicIds) {
+      const found = ALL_TOS_TOPICS.find((t) => t.id === tid)
+      if (found) topicSubjects.add(found.subject)
+    }
+    const requiredSubjects = Array.from(topicSubjects)
+
+    setConfig((prev) => {
+      const mergedSubs = Array.from(new Set([...prev.subjects, ...requiredSubjects]))
+      return {
+        ...prev,
+        tosTopicIds: topicIds,
+        tosTopicId: topicIds[0] ?? null,
+        subjects: mergedSubs.length > 0 ? mergedSubs : prev.subjects,
+      }
+    })
+  }
+
+  const handleRemoveTopic = (topicId: string) => {
+    const updated = (config.tosTopicIds || []).filter((id) => id !== topicId)
+    handleApplyTopics(updated)
+  }
+
+  const handleClearAllTopics = () => {
+    handleApplyTopics([])
+  }
 
   const toggleSubject = (subj: Subject) => {
     setConfig((prev) => {
       const isSelected = prev.subjects.includes(subj)
       if (isSelected) {
+        // Deselect subject and also filter out any topics belonging to this subject
+        const nextSubjects = prev.subjects.filter((s) => s !== subj)
+        const nextTopicIds = (prev.tosTopicIds || []).filter((tid) => {
+          const found = ALL_TOS_TOPICS.find((t) => t.id === tid)
+          return found ? found.subject !== subj : true
+        })
         return {
           ...prev,
-          subjects: prev.subjects.filter((s) => s !== subj),
+          subjects: nextSubjects,
+          tosTopicIds: nextTopicIds,
+          tosTopicId: nextTopicIds[0] ?? null,
         }
       } else {
         return {
@@ -180,6 +265,96 @@ export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
               )
             })}
           </div>
+        </div>
+
+        {/* TOPIC FOCUS (Matches desktop layout, optimized for mobile) */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="uppercase tracking-wider text-neutral-300 font-bold font-display">
+              TOPIC FOCUS
+            </span>
+            {hasActiveTopics && (
+              <button
+                type="button"
+                onClick={handleClearAllTopics}
+                className="text-[10px] font-mono text-[#00FF41] hover:underline flex items-center gap-1 active:scale-95 transition-all"
+              >
+                <X size={11} /> Clear Filter (All Topics)
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-neutral-900/60 border border-neutral-800">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                  hasActiveTopics
+                    ? 'bg-[#00FF41] animate-pulse shadow-[0_0_8px_#00FF41]'
+                    : 'bg-neutral-600'
+                }`}
+              />
+              <div className="flex flex-col min-w-0">
+                <span className="font-display font-bold text-xs text-neutral-100 truncate">
+                  {hasActiveTopics
+                    ? `${selectedCount} ${selectedCount === 1 ? 'Topic Selected' : 'Topics Selected'}`
+                    : 'All Topics (Comprehensive Pool)'}
+                </span>
+                <span className="text-[10px] font-mono text-neutral-400 truncate">
+                  {hasActiveTopics
+                    ? 'Questions sampled exclusively from chosen topics'
+                    : 'Random pool across all syllabus chapters'}
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsTopicModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-neutral-800/80 border border-neutral-700 hover:border-[#00FF41]/60 hover:text-white text-neutral-300 font-rajdhani font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shrink-0 active:scale-95"
+            >
+              <Layers size={13} className="text-[#00FF41]" />
+              {hasActiveTopics ? 'Edit Topics' : 'Filter Topics'}
+            </button>
+          </div>
+
+          {/* Selected Topic Badges Preview */}
+          {hasActiveTopics && (
+            <div className="flex flex-wrap gap-1.5 pt-0.5 max-h-24 overflow-y-auto no-scrollbar">
+              {(config.tosTopicIds || []).map((tid) => {
+                const topic = ALL_TOS_TOPICS.find((t) => t.id === tid)
+                if (!topic) return null
+                const color = SUBJECT_COLOR[topic.subject]
+                return (
+                  <span
+                    key={tid}
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-mono bg-neutral-900 border border-[#00FF41]/30 text-neutral-200"
+                  >
+                    <span
+                      className="font-bold text-[9px] px-1 py-0.2 rounded"
+                      style={{
+                        backgroundColor: `${color}20`,
+                        color: color,
+                      }}
+                    >
+                      {topic.subject}
+                    </span>
+                    <span className="text-[#00FF41] font-bold">{topic.code}</span>
+                    <span className="truncate max-w-[130px] font-rajdhani font-semibold">{topic.title}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleRemoveTopic(tid)
+                      }}
+                      className="text-neutral-500 hover:text-white p-0.5 active:scale-95"
+                    >
+                      <X size={10} />
+                    </button>
+                  </span>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* SURVIVAL SPECIFIC OPTIONS */}
@@ -373,6 +548,15 @@ export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
           </div>
         </div>
       </div>
+
+      <GauntletTopicModal
+        isOpen={isTopicModalOpen}
+        onClose={() => setIsTopicModalOpen(false)}
+        selectedTopicIds={config.tosTopicIds || []}
+        onApply={handleApplyTopics}
+        activeSubjects={config.subjects}
+      />
     </div>
   )
 }
+

@@ -60,10 +60,13 @@ Built with **React 19**, **TypeScript**, **Tailwind CSS**, and **Capacitor 8**.
 - **Performance Summary**: Score calculation, time spent, and accuracy breakdown.
 - **Test Paper View**: Continuous, printable-style document viewer matching desktop typography with Rajdhani font, JetBrains Mono formula blocks, and mobile-optimized question/choice scaling (Table, Glossary/List, and Q&A layouts with Light, Sepia, and Dark themes) — display-only (no export/print/share; see Design Philosophy below).
 
-### 🗂️ Topic Browser & Subject Filtering
+### 🗂️ Topic Browser, ToS Topics & Subject Filtering
 - **Progressive Batch Rendering & Virtualization**: Progressive batching (24 cards per slice) via `IntersectionObserver` eliminating DOM freeze and layout lag across 160+ decks.
 - **In-Memory Query Caching**: SQLite deck counts and metadata cached in-memory with automatic invalidation on new database import.
 - **View Preservation**: Preserves Topic Browser DOM and scroll position across study sessions for instant (<50ms) zero-reloading navigation.
+- **Segmented Mode Toggle — Custom Decks | ToS Topics**: A toggle at the top of the Topic Browser switches between the standard Custom Decks view and the new **ToS Topics** panel:
+  - **ToS Topics Panel**: Hierarchical folder sidebar (`TosTopicDrawer`) organized by subject → parent topic (`x.0`) → decimal subtopic (`x.x`). Selecting any topic launches a LooksFam drill scoped to that PRC syllabus classification. Card counts and mastery percentages per topic are aggregated live from `dbService.getTosTopicStats()`.
+  - **Scope**: ToS Topic sessions include **all MCQ cards** tagged with the selected `tos_topic_id` (problem-solving cards included). No Gauntlet-style exclusion filtering is applied; the full card pool under each syllabus code is available for study.
 Instant filtering across the 4 Philippine ECE Board Exam subject areas:
 - **MATH (Mathematics — 7 Topics)**:
   - 1.0 Differential Calculus
@@ -95,7 +98,7 @@ Instant filtering across the 4 Philippine ECE Board Exam subject areas:
   - 9.0 Environment Science and Engineering
   - 10.0 ECE Laws, Contracts, Ethics, Standards and Safety
   - 11.0 CAD
-- **EST (Electronics Systems and Technologies — 6 Topics)**:
+- **EST (Electronics Systems & Technologies — 6 Topics)**:
   - 1.0 Signals, Spectra, Signal Processing
   - 2.0 Principles of Communications
   - 3.0 Digital Communications
@@ -214,7 +217,8 @@ ecengine_companion/
 │   │   ├── LeaveConfirmModal.tsx     # Hardware/UI back navigation confirmation
 │   │   ├── StudyCard.tsx             # 3D flip card with dynamic height & AutoFitText
 │   │   ├── TestNavRail.tsx           # Exam question navigation drawer
-│   │   └── TestSettingsModal.tsx     # Pre-launch timed test configuration
+│   │   ├── TestSettingsModal.tsx     # Pre-launch timed test configuration
+│   │   └── TosTopicDrawer.tsx        # Hierarchical TOS subject → parent → subtopic folder sidebar
 │   ├── hooks/
 │   │   ├── useGauntletMusic.ts       # Adaptive background battle music state machine
 │   │   ├── useSound.ts               # Sound effect playback & audio prewarming
@@ -227,11 +231,13 @@ ecengine_companion/
 │   │   ├── Settings.tsx              # Database import & AI key manager
 │   │   ├── TestMode.tsx              # Timed exam simulation runner
 │   │   ├── TestPaperView.tsx         # Printable-style continuous deck view
-│   │   └── TopicBrowser.tsx          # Main subject & topic explorer (progressive batch rendering)
+│   │   └── TopicBrowser.tsx          # Main subject & topic explorer (Custom Decks | ToS Topics toggle)
 │   ├── services/
 │   │   ├── bookmark.service.ts       # MCQ bookmark manager (Preferences)
 │   │   ├── clipboard.service.ts      # Native Android clipboard with fallback
-│   │   ├── db.service.ts             # SQLite database service with in-memory caching
+│   │   ├── db.service.ts             # SQLite service: getCards, getCardsWithProgress, getAllCardsByTopic,
+│   │   │                             #   getGauntletCards, getGauntletPoolSizes, getTosTopicStats,
+│   │   │                             #   and virtual tos_* topic ID routing
 │   │   ├── dbImport.service.ts       # File picker & database import
 │   │   ├── explain.service.ts        # Multi-provider LLM API client
 │   │   ├── flashcardBookmark.service.ts # Flashcard & Formula bookmark manager

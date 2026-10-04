@@ -224,9 +224,9 @@ function App() {
           onStartGauntlet={async (config) => {
             initGauntletAudio()
             try {
-              const cards = await dbService.getGauntletCards(config.subjects)
+              const cards = await dbService.getGauntletCards(config.subjects, config.tosTopicIds)
               if (cards.length === 0) {
-                alert('No MCQ questions available for Gauntlet in ' + config.subjects.join(', '))
+                alert('No MCQ questions available for Gauntlet in ' + config.subjects.join(', ') + (config.tosTopicIds?.length ? ' within the selected topics.' : ''))
                 return
               }
               setGauntletCards(cards)
