@@ -4,7 +4,6 @@ import {
   Flame,
   X,
   AlertCircle,
-  Music,
   Volume2,
   VolumeX,
   Bookmark,
@@ -28,7 +27,7 @@ import { resolveImageSrc } from '../services/image.service'
 import { bookmarkService } from '../services/bookmark.service'
 import { useSound, getSoundsMuted, setSoundsMuted } from '../hooks/useSound'
 import { useGauntletMusic, getSurvivalMusicRegion } from '../hooks/useGauntletMusic'
-import { gauntletStorageService } from '../services/gauntlet-storage.service'
+import { gauntletStorageService, GauntletStats } from '../services/gauntlet-storage.service'
 import {
   GauntletSummaryModal,
   GauntletRunResult,
@@ -37,12 +36,14 @@ import {
 } from '../components/gauntlet/GauntletSummaryModal'
 import { LeaveConfirmModal } from '../components/LeaveConfirmModal'
 import { ImageLightbox } from '../components/ImageLightbox'
+import { GauntletCountdown } from '../components/gauntlet/GauntletCountdown'
 
 interface GauntletSessionProps {
   cards: Card[]
   config: GauntletArcadeConfig
   onExit: () => void
   onDrillMistakes?: (cards: Card[]) => void
+  onLearnAll?: (cards: Card[]) => void
 }
 
 interface ActiveQuestion {
@@ -58,17 +59,186 @@ interface ActiveQuestion {
 
 const CHOICE_LETTERS = ['A', 'B', 'C', 'D']
 
+interface QuestionViewProps {
+  cardIndex: number
+  activeQuestion: ActiveQuestion
+  questionHtml: string
+  choicesHtml: string[]
+  activeImageSrc: string | null
+  selectedChoice: number | null
+  isAnsweringLocked: boolean
+  isBookmarked: boolean
+  shakeWrong: boolean
+  onChoiceClick: (idx: number) => void
+  onToggleBookmark: () => void
+  onOpenLightbox: (src: string) => void
+}
+
+const QuestionView = React.memo<QuestionViewProps>(
+  ({
+    cardIndex,
+    activeQuestion,
+    questionHtml,
+    choicesHtml,
+    activeImageSrc,
+    selectedChoice,
+    isAnsweringLocked,
+    isBookmarked,
+    shakeWrong,
+    onChoiceClick,
+    onToggleBookmark,
+    onOpenLightbox,
+  }) => {
+    return (
+      <main className="flex-1 px-4 sm:px-6 flex flex-col py-6 pb-16 overflow-y-auto">
+        <div className="mx-auto max-w-3xl w-full my-auto">
+          <div className="flex flex-col gap-5">
+            {/* Question Card */}
+            <div
+              className={`relative rounded-2xl border bg-neutral-900/80 p-5 sm:p-7 shadow-sm transition-colors duration-150 overflow-hidden [transform:translate3d(0,0,0)] backface-hidden ${
+                shakeWrong
+                  ? 'gauntlet-card-shake border-red-500/80 shadow-[0_0_24px_rgba(239,68,68,0.25)]'
+                  : 'border-neutral-800'
+              }`}
+            >
+              {shakeWrong && (
+                <div
+                  aria-hidden="true"
+                  className="gauntlet-edge-flash absolute inset-0 pointer-events-none rounded-2xl border-2 border-red-500 shadow-[inset_0_0_24px_rgba(239,68,68,0.5)] z-20"
+                />
+              )}
+
+              {/* Bookmark Toggle */}
+              <button
+                type="button"
+                onClick={onToggleBookmark}
+                title={isBookmarked ? 'Remove bookmark' : 'Bookmark this question'}
+                className="absolute top-4 right-4 p-1.5 rounded-lg text-neutral-500 hover:text-[#00ff41] active:scale-90 transition-all z-10"
+              >
+                <Bookmark
+                  size={18}
+                  className={isBookmarked ? 'fill-[#00ff41] text-[#00ff41]' : ''}
+                />
+              </button>
+
+              <div className="flex items-center justify-between gap-2 mb-3 pr-8">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-mono font-semibold text-neutral-400 bg-neutral-950/60 px-2 py-0.5 rounded border border-neutral-800">
+                    Question #{cardIndex + 1}
+                  </span>
+                  {activeQuestion.card.subject && (
+                    <span className="text-[11px] font-mono font-semibold text-neutral-400 bg-neutral-950/60 px-2 py-0.5 rounded border border-neutral-800 uppercase">
+                      {activeQuestion.card.subject}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {activeQuestion.card.tosTopicId && (
+                    <span className="text-[11px] font-mono font-semibold text-[#00ff41] bg-[#00ff41]/10 px-2 py-0.5 rounded border border-[#00ff41]/20">
+                      {activeQuestion.card.tosTopicId}
+                    </span>
+                  )}
+                  {activeQuestion.mcq.yearAsked && (
+                    <span className="text-[10px] font-mono text-neutral-500">
+                      ECE Board {activeQuestion.mcq.yearAsked}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <h2
+                className="text-base sm:text-lg font-medium text-neutral-100 leading-relaxed break-words"
+                dangerouslySetInnerHTML={{ __html: questionHtml }}
+              />
+
+              {/* Inline Diagram */}
+              {activeImageSrc && (
+                <div
+                  onClick={() => onOpenLightbox(activeImageSrc)}
+                  className="mt-4 flex justify-center overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/60 p-2 cursor-zoom-in active:scale-[0.98] transition-transform"
+                  title="Tap to zoom"
+                >
+                  <img
+                    src={activeImageSrc}
+                    alt="Question diagram"
+                    loading="lazy"
+                    decoding="async"
+                    className="max-h-64 w-full object-contain rounded-lg"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Choices List */}
+            <div className="flex flex-col gap-2.5">
+              {activeQuestion.choices.map((_, idx) => {
+                const letter = CHOICE_LETTERS[idx] || String.fromCharCode(65 + idx)
+                const isCorrect = idx === activeQuestion.answerIndex
+                const isSelected = selectedChoice === idx
+
+                let btnStyle =
+                  'border-neutral-800 bg-neutral-900/60 text-neutral-200 hover:border-neutral-700 hover:bg-neutral-900'
+                let badgeStyle = 'bg-neutral-950 text-neutral-400 border-neutral-800'
+
+                if (isAnsweringLocked) {
+                  if (isCorrect) {
+                    btnStyle =
+                      'border-[#00ff41] bg-[#00ff41]/10 text-[#00ff41] shadow-[0_0_12px_rgba(0,255,65,0.15)] font-semibold'
+                    badgeStyle = 'bg-[#00ff41]/20 text-[#00ff41] border-[#00ff41]/40'
+                  } else if (isSelected) {
+                    btnStyle = 'border-red-500/80 bg-red-500/10 text-red-400 font-semibold'
+                    badgeStyle = 'bg-red-500/20 text-red-400 border-red-500/40'
+                  } else {
+                    btnStyle = 'border-neutral-800/40 bg-neutral-950/40 text-neutral-500 opacity-50'
+                    badgeStyle = 'bg-neutral-900/40 text-neutral-600 border-neutral-800/40'
+                  }
+                }
+
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    disabled={isAnsweringLocked}
+                    onClick={() => onChoiceClick(idx)}
+                    className={`flex items-start gap-3 rounded-xl border p-3.5 sm:p-4 text-left transition-all active:scale-[0.99] cursor-pointer ${btnStyle}`}
+                  >
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border font-mono text-xs font-bold leading-none ${badgeStyle}`}
+                    >
+                      {letter}
+                    </span>
+                    <span
+                      className="text-sm sm:text-base leading-snug break-words flex-1 pt-0.5"
+                      dangerouslySetInnerHTML={{
+                        __html: choicesHtml[idx] || '',
+                      }}
+                    />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </main>
+    )
+  }
+)
+
 export const GauntletSession: React.FC<GauntletSessionProps> = ({
   cards,
   config,
   onExit,
   onDrillMistakes,
+  onLearnAll,
 }) => {
   const { play } = useSound()
   const gauntletMusic = useGauntletMusic()
 
-  // Game run state
-  const [deckPool] = useState<Card[]>(() => shuffleArray([...cards]))
+  // Game run state — reshuffled for each session and on "Run it Back"
+  const [deckPool, setDeckPool] = useState<Card[]>(() => shuffleArray([...cards]))
+  useEffect(() => {
+    setDeckPool(shuffleArray([...cards]))
+  }, [cards])
   const [cardIndex, setCardIndex] = useState(0)
   const [score, setScore] = useState(0)
   const [streak, setStreak] = useState(0)
@@ -80,8 +250,7 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
   const [correctCount, setCorrectCount] = useState(0)
   const [wrongCount, setWrongCount] = useState(0)
 
-  // Audio toggles
-  const [isMusicMuted, setIsMusicMuted] = useState(false)
+  // Audio toggle
   const [isSfxMuted, setIsSfxMuted] = useState(() => getSoundsMuted())
 
   // Bookmarks
@@ -90,11 +259,28 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
     bookmarkService.getAll().then(setBookmarkedIds).catch(() => {})
   }, [])
 
+  // Pre-load stats for instantaneous high-score comparisons on finish
+  const [gauntletStats, setGauntletStats] = useState<GauntletStats | null>(null)
+  useEffect(() => {
+    gauntletStorageService.getStats().then(setGauntletStats).catch(() => {})
+  }, [])
+
+  // Visual effects state matching desktop arcade feel
+  const [shakeWrong, setShakeWrong] = useState(false)
+  const [pulseHeart, setPulseHeart] = useState(false)
+
+  // Countdown phase state matching desktop: allows audio buffer to pre-load and play 3-2-1-GO
+  const [isCountingDown, setIsCountingDown] = useState(true)
+  const isCountingDownRef = useRef(isCountingDown)
+  useEffect(() => {
+    isCountingDownRef.current = isCountingDown
+  }, [isCountingDown])
+
   // Question interaction state
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null)
   const [isAnsweringLocked, setIsAnsweringLocked] = useState(false)
   const [questionStartTime, setQuestionStartTime] = useState<number>(() => Date.now())
-  const [sessionStartTime] = useState<number>(() => Date.now())
+  const [sessionStartTime, setSessionStartTime] = useState<number>(() => Date.now())
   const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -129,11 +315,27 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
     runResultRef.current = runResult
   }, [runResult])
 
+  const handleCountdownCancel = useCallback(() => {
+    gauntletMusic.stop(0.3)
+    onExit()
+  }, [gauntletMusic, onExit])
+
+  const handleCountdownBegin = useCallback(() => {
+    setIsCountingDown(false)
+    setSessionStartTime(Date.now())
+    setQuestionStartTime(Date.now())
+    gauntletMusic.setState(config.mode === 'survival' ? 'enemiesNearby' : 'battle1')
+  }, [config.mode, gauntletMusic])
+
   // Intercept hardware/gesture back button on Android
   useEffect(() => {
     const listenerPromise = CapacitorApp.addListener('backButton', () => {
       if (lightboxSrcRef.current) {
         setLightboxSrc(null)
+        return
+      }
+      if (isCountingDownRef.current) {
+        handleCountdownCancel()
         return
       }
       if (runResultRef.current) {
@@ -149,26 +351,26 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
     return () => {
       listenerPromise.then((handle) => handle.remove()).catch(() => {})
     }
-  }, [onExit])
+  }, [onExit, handleCountdownCancel])
 
-  // Start background music on mount and clean up on exit
+  // Start background music on mount with stealth ambient for countdown, and clean up on exit
   useEffect(() => {
-    gauntletMusic.start(config.mode === 'survival' ? 'enemiesNearby' : 'battle1')
+    gauntletMusic.start('stealth')
     return () => {
       gauntletMusic.stop(0.4)
     }
-  }, [config.mode, gauntletMusic])
+  }, [gauntletMusic])
 
   // Active question resolution
-  const currentCard = deckPool[cardIndex % deckPool.length]
+  const currentCard = deckPool[cardIndex % (deckPool.length || 1)]
   const currentMcq = currentCard?.data as MCQData
   const isCurrentCardBookmarked = currentCard ? bookmarkedIds.has(currentCard.id) : false
 
-  const handleToggleBookmark = async () => {
+  const handleToggleBookmark = useCallback(async () => {
     if (!currentCard) return
     const updated = await bookmarkService.toggle(currentCard.id)
     setBookmarkedIds(updated)
-  }
+  }, [currentCard])
 
   const activeQuestion: ActiveQuestion | null = useMemo(() => {
     if (!currentCard || !currentMcq || !Array.isArray(currentMcq.choices)) return null
@@ -234,7 +436,7 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
   // End of run handler
   const isGameOverRef = useRef(false)
   const finishRun = useCallback(
-    async (
+    (
       finalMistakes: GauntletMistake[],
       finalAnswers: GauntletAnswerRecord[],
       finalScore: number,
@@ -243,14 +445,31 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
       if (isGameOverRef.current) return
       isGameOverRef.current = true
 
-      gauntletMusic.stop(0.2)
+      // Shift music smoothly to combatOver / victory region
+      gauntletMusic.setState('combatOver')
+      gauntletMusic.setLowHealth(false)
       play('gameOver')
 
-      const { isNewHighScore, isNewBestStreak } = await gauntletStorageService.recordRun(
-        config.mode,
-        finalScore,
-        finalBestStreak
-      )
+      const isNewHighScore = gauntletStats
+        ? (config.mode === 'survival'
+          ? finalScore > gauntletStats.survivalHighScore
+          : finalScore > gauntletStats.timetrialHighScore)
+        : false
+      const isNewBestStreak = gauntletStats
+        ? (config.mode === 'survival'
+          ? finalBestStreak > gauntletStats.survivalBestStreak
+          : finalBestStreak > gauntletStats.timetrialBestStreak)
+        : false
+
+      // Fire async storage update in background without blocking UI
+      gauntletStorageService
+        .recordRun(config.mode, finalScore, finalBestStreak)
+        .then(({ updatedStats }) => {
+          setGauntletStats(updatedStats)
+        })
+        .catch((err) => {
+          console.warn('[GauntletSession] Failed to save stats:', err)
+        })
 
       setRunResult({
         mode: config.mode,
@@ -266,7 +485,16 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
         allAnswers: finalAnswers,
       })
     },
-    [config.mode, gauntletMusic, play, sessionStartTime, totalAnswered, correctCount, wrongCount]
+    [
+      config.mode,
+      gauntletMusic,
+      play,
+      sessionStartTime,
+      totalAnswered,
+      correctCount,
+      wrongCount,
+      gauntletStats,
+    ]
   )
 
   // Timeout event in survival
@@ -275,7 +503,15 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
     setIsAnsweringLocked(true)
 
     play('wrong')
+    setShakeWrong(true)
+    setTimeout(() => setShakeWrong(false), 300)
+
     const nextLives = config.startingLives > 0 ? lives - 1 : lives
+    if (config.startingLives > 0) {
+      setPulseHeart(true)
+      setTimeout(() => setPulseHeart(false), 400)
+    }
+
     setLives(nextLives)
     setStreak(0)
     setWrongCount((w) => w + 1)
@@ -336,7 +572,7 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
 
   // Time Trial Session Countdown
   useEffect(() => {
-    if (config.mode !== 'timetrial' || runResult || isGameOverRef.current || isAnsweringLocked) return
+    if (isCountingDown || config.mode !== 'timetrial' || runResult || isGameOverRef.current || isAnsweringLocked) return
 
     const interval = setInterval(() => {
       setTimeTrialTimeLeft((prev) => {
@@ -350,11 +586,12 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [config.mode, runResult, finishRun, mistakes, allAnswers, score, bestStreak, isAnsweringLocked])
+  }, [isCountingDown, config.mode, runResult, finishRun, mistakes, allAnswers, score, bestStreak, isAnsweringLocked])
 
   // Survival Per-Question Countdown (skips if config.perQuestionSec === 0)
   useEffect(() => {
     if (
+      isCountingDown ||
       config.mode !== 'survival' ||
       config.perQuestionSec === 0 ||
       runResult ||
@@ -380,12 +617,12 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
     }, 250)
 
     return () => clearInterval(interval)
-  }, [cardIndex, config.mode, config.perQuestionSec, runResult, isAnsweringLocked, handleTimeout])
+  }, [isCountingDown, cardIndex, config.mode, config.perQuestionSec, runResult, isAnsweringLocked, handleTimeout])
 
   // Answer selection handler
   const handleChoiceClick = useCallback(
     (choiceIdx: number) => {
-      if (isAnsweringLocked || !activeQuestion || isGameOverRef.current) return
+      if (isCountingDown || isAnsweringLocked || !activeQuestion || isGameOverRef.current) return
       setIsAnsweringLocked(true)
       setSelectedChoice(choiceIdx)
 
@@ -446,6 +683,9 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
         }, LINGER_CORRECT_MS)
       } else {
         play('wrong')
+        setShakeWrong(true)
+        setTimeout(() => setShakeWrong(false), 300)
+
         const scored = scoreAnswer({
           outcome: 'wrong',
           timeMs: elapsedMs,
@@ -469,6 +709,8 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
         setMistakes(updatedMistakes)
 
         if (config.mode === 'survival' && config.startingLives > 0) {
+          setPulseHeart(true)
+          setTimeout(() => setPulseHeart(false), 400)
           const nextLives = lives - 1
           setLives(nextLives)
 
@@ -552,50 +794,31 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
 
           {/* Right: Audio Toggles & Lives/Clock */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* Audio Toggles */}
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !isMusicMuted
-                  setIsMusicMuted(next)
-                  if (next) {
-                    gauntletMusic.stop(0.2)
-                  } else {
-                    gauntletMusic.start(config.mode === 'survival' ? 'battle1' : 'battle2')
-                  }
-                }}
-                className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
-                  isMusicMuted
-                    ? 'border-neutral-800 bg-neutral-900 text-neutral-500'
-                    : 'border-[#00ff41]/40 bg-[#00ff41]/10 text-[#00ff41]'
-                }`}
-                title={isMusicMuted ? 'Unmute BGM' : 'Mute BGM'}
-              >
-                <Music size={14} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !isSfxMuted
-                  setIsSfxMuted(next)
-                  setSoundsMuted(next)
-                }}
-                className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
-                  isSfxMuted
-                    ? 'border-neutral-800 bg-neutral-900 text-neutral-500'
-                    : 'border-cyan-400/40 bg-cyan-400/10 text-cyan-400'
-                }`}
-                title={isSfxMuted ? 'Unmute SFX' : 'Mute SFX'}
-              >
-                {isSfxMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-              </button>
-            </div>
+            {/* Audio Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !isSfxMuted
+                setIsSfxMuted(next)
+                setSoundsMuted(next)
+              }}
+              className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
+                isSfxMuted
+                  ? 'border-neutral-800 bg-neutral-900 text-neutral-500'
+                  : 'border-[#00ff41]/40 bg-[#00ff41]/10 text-[#00ff41]'
+              }`}
+              title={isSfxMuted ? 'Unmute Audio' : 'Mute Audio'}
+            >
+              {isSfxMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+            </button>
 
             {/* Lives or Clock */}
             {config.mode === 'survival' ? (
-              <div className="flex items-center gap-1 bg-neutral-900/90 px-2.5 py-1 rounded-lg border border-neutral-800">
+              <div
+                className={`flex items-center gap-1 bg-neutral-900/90 px-2.5 py-1 rounded-lg border border-neutral-800 transition-all ${
+                  pulseHeart ? 'gauntlet-heart-pulse border-red-500/60' : ''
+                }`}
+              >
                 {config.startingLives === 0 ? (
                   <span className="text-xs font-mono font-bold text-red-400 flex items-center gap-1">
                     <Heart size={14} className="text-red-500 fill-red-500" /> ∞
@@ -606,7 +829,9 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
                       <Heart
                         key={i}
                         size={14}
-                        className="text-red-500 fill-red-500 drop-shadow-[0_0_6px_rgba(239,68,68,0.5)]"
+                        className={`text-red-500 fill-red-500 drop-shadow-[0_0_6px_rgba(239,68,68,0.5)] ${
+                          pulseHeart ? 'animate-pulse' : ''
+                        }`}
                       />
                     ))}
                     {lives > 5 && (
@@ -619,7 +844,13 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
                 )}
               </div>
             ) : (
-              <div className="font-mono text-xs font-bold text-cyan-400 bg-cyan-400/10 border border-cyan-400/30 px-2.5 py-1 rounded-lg">
+              <div
+                className={`font-mono text-xs font-bold text-cyan-400 bg-cyan-400/10 border px-2.5 py-1 rounded-lg transition-all ${
+                  timeTrialTimeLeft <= 15
+                    ? 'border-red-500/80 text-red-400 gauntlet-timer-shake shadow-[0_0_12px_rgba(239,68,68,0.3)]'
+                    : 'border-cyan-400/30'
+                }`}
+              >
                 {timeTrialMinutes}:{timeTrialSeconds.toString().padStart(2, '0')}
               </div>
             )}
@@ -628,7 +859,11 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
 
         {/* Progress Bar (countdown for question in Survival, session countdown in Time Trial) */}
         {config.mode === 'survival' && config.perQuestionSec > 0 && (
-          <div className="mx-auto mt-2.5 max-w-3xl h-1 w-full bg-neutral-900 rounded-full overflow-hidden">
+          <div
+            className={`mx-auto mt-2.5 max-w-3xl h-1 w-full bg-neutral-900 rounded-full overflow-hidden transition-all ${
+              survivalTimeLeft <= 5 ? 'gauntlet-timer-shake' : ''
+            }`}
+          >
             <div
               className={`h-full transition-all duration-200 ${
                 survivalTimeLeft <= 3
@@ -673,123 +908,20 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
 
       {/* Question Content View */}
       {activeQuestion ? (
-        <main className="flex-1 px-4 sm:px-6 flex flex-col py-6 pb-16 overflow-y-auto">
-          <div className="mx-auto max-w-3xl w-full my-auto">
-            <div className="flex flex-col gap-5">
-              {/* Question Card */}
-              <div className="relative rounded-2xl border border-neutral-800 bg-neutral-900/80 p-5 sm:p-7 shadow-sm">
-                {/* Bookmark Toggle */}
-                <button
-                  type="button"
-                  onClick={handleToggleBookmark}
-                  title={isCurrentCardBookmarked ? 'Remove bookmark' : 'Bookmark this question'}
-                  className="absolute top-4 right-4 p-1.5 rounded-lg text-neutral-500 hover:text-[#00ff41] active:scale-90 transition-all"
-                >
-                  <Bookmark
-                    size={18}
-                    className={isCurrentCardBookmarked ? 'fill-[#00ff41] text-[#00ff41]' : ''}
-                  />
-                </button>
-
-                <div className="flex items-center justify-between gap-2 mb-3 pr-8">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-mono font-semibold text-neutral-400 bg-neutral-950/60 px-2 py-0.5 rounded border border-neutral-800">
-                      Question #{cardIndex + 1}
-                    </span>
-                    {activeQuestion.card.subject && (
-                      <span className="text-[11px] font-mono font-semibold text-neutral-400 bg-neutral-950/60 px-2 py-0.5 rounded border border-neutral-800 uppercase">
-                        {activeQuestion.card.subject}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {activeQuestion.card.tosTopicId && (
-                      <span className="text-[11px] font-mono font-semibold text-[#00ff41] bg-[#00ff41]/10 px-2 py-0.5 rounded border border-[#00ff41]/20">
-                        {activeQuestion.card.tosTopicId}
-                      </span>
-                    )}
-                    {activeQuestion.mcq.yearAsked && (
-                      <span className="text-[10px] font-mono text-neutral-500">
-                        ECE Board {activeQuestion.mcq.yearAsked}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <h2
-                  className="text-base sm:text-lg font-medium text-neutral-100 leading-relaxed break-words"
-                  dangerouslySetInnerHTML={{ __html: questionHtml }}
-                />
-
-                {/* Inline Diagram */}
-                {activeImageSrc && (
-                  <div
-                    onClick={() => setLightboxSrc(activeImageSrc)}
-                    className="mt-4 flex justify-center overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/60 p-2 cursor-zoom-in active:scale-[0.98] transition-transform"
-                    title="Tap to zoom"
-                  >
-                    <img
-                      src={activeImageSrc}
-                      alt="Question diagram"
-                      loading="lazy"
-                      decoding="async"
-                      className="max-h-64 w-full object-contain rounded-lg"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Choices List */}
-              <div className="flex flex-col gap-2.5">
-                {activeQuestion.choices.map((_, idx) => {
-                  const letter = CHOICE_LETTERS[idx] || String.fromCharCode(65 + idx)
-                  const isCorrect = idx === activeQuestion.answerIndex
-                  const isSelected = selectedChoice === idx
-
-                  let btnStyle =
-                    'border-neutral-800 bg-neutral-900/60 text-neutral-200 hover:border-neutral-700 hover:bg-neutral-900'
-                  let badgeStyle = 'bg-neutral-950 text-neutral-400 border-neutral-800'
-
-                  if (isAnsweringLocked) {
-                    if (isCorrect) {
-                      btnStyle =
-                        'border-[#00ff41] bg-[#00ff41]/10 text-[#00ff41] shadow-[0_0_12px_rgba(0,255,65,0.15)] font-semibold'
-                      badgeStyle = 'bg-[#00ff41]/20 text-[#00ff41] border-[#00ff41]/40'
-                    } else if (isSelected) {
-                      btnStyle = 'border-red-500/80 bg-red-500/10 text-red-400 font-semibold'
-                      badgeStyle = 'bg-red-500/20 text-red-400 border-red-500/40'
-                    } else {
-                      btnStyle = 'border-neutral-800/40 bg-neutral-950/40 text-neutral-500 opacity-50'
-                      badgeStyle = 'bg-neutral-900/40 text-neutral-600 border-neutral-800/40'
-                    }
-                  }
-
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      disabled={isAnsweringLocked}
-                      onClick={() => handleChoiceClick(idx)}
-                      className={`flex items-start gap-3 rounded-xl border p-3.5 sm:p-4 text-left transition-all active:scale-[0.99] cursor-pointer ${btnStyle}`}
-                    >
-                      <span
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border font-mono text-xs font-bold leading-none ${badgeStyle}`}
-                      >
-                        {letter}
-                      </span>
-                      <span
-                        className="text-sm sm:text-base leading-snug break-words flex-1 pt-0.5"
-                        dangerouslySetInnerHTML={{
-                          __html: choicesHtml[idx] || '',
-                        }}
-                      />
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        </main>
+        <QuestionView
+          cardIndex={cardIndex}
+          activeQuestion={activeQuestion}
+          questionHtml={questionHtml}
+          choicesHtml={choicesHtml}
+          activeImageSrc={activeImageSrc}
+          selectedChoice={selectedChoice}
+          isAnsweringLocked={isAnsweringLocked}
+          isBookmarked={isCurrentCardBookmarked}
+          shakeWrong={shakeWrong}
+          onChoiceClick={handleChoiceClick}
+          onToggleBookmark={handleToggleBookmark}
+          onOpenLightbox={setLightboxSrc}
+        />
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-neutral-400">
           <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-900/60 p-8 text-center my-8 max-w-sm">
@@ -808,6 +940,14 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* 3-2-1-GO Countdown Splash Overlay */}
+      {isCountingDown && (
+        <GauntletCountdown
+          onBegin={handleCountdownBegin}
+          onCancel={handleCountdownCancel}
+        />
       )}
 
       {/* Confirmation modal before discarding run */}
@@ -830,6 +970,8 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
         <GauntletSummaryModal
           result={runResult}
           onPlayAgain={() => {
+            // Reshuffle the deck for a fresh run (new card order)
+            setDeckPool(shuffleArray([...cards]))
             setRunResult(null)
             isGameOverRef.current = false
             setScore(0)
@@ -846,10 +988,25 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
             setSurvivalTimeLeft(config.perQuestionSec)
             setTimeTrialTimeLeft(config.durationSec)
             setQuestionStartTime(Date.now())
-            gauntletMusic.start(config.mode === 'survival' ? 'enemiesNearby' : 'battle1')
+            setIsCountingDown(true)
+            gauntletMusic.start('stealth')
           }}
-          onExit={onExit}
-          onDrillMistakes={onDrillMistakes}
+          onExit={() => {
+            gauntletMusic.stop(0.4)
+            onExit()
+          }}
+          onDrillMistakes={(mistakeCards) => {
+            gauntletMusic.stop(0.4)
+            if (onDrillMistakes) {
+              onDrillMistakes(mistakeCards)
+            }
+          }}
+          onLearnAll={(allCards) => {
+            gauntletMusic.stop(0.4)
+            if (onLearnAll) {
+              onLearnAll(allCards)
+            }
+          }}
         />
       )}
     </div>

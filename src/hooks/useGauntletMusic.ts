@@ -1,6 +1,7 @@
 import gauntletBgUrl from '../assets/sounds/gauntletbg.mp3'
 import lowHealthUrl from '../assets/sounds/lowhealth_quiet.mp3'
-import { getSoundVolume, getSoundsMuted } from './useSound'
+import { App as CapacitorApp } from '@capacitor/app'
+import { getSoundVolume, getSoundsMuted, prewarmSounds } from './useSound'
 
 export type MusicRegion =
   | 'stealth'
@@ -94,6 +95,71 @@ if (typeof window !== 'undefined') {
   window.addEventListener('ecengine:sound:change', () => {
     syncMasterVolume()
   })
+
+  // Pause/resume music when the app goes to background or screen is locked
+  const handleAppVisibilityChange = (hidden: boolean) => {
+    if (!audioCtx) return
+    if (hidden) {
+      // Instantly silence master gain to prevent any leakage while Android suspends threads
+      if (masterGain) {
+        try {
+          masterGain.gain.setValueAtTime(0, audioCtx.currentTime)
+        } catch {
+          /* ignore */
+        }
+      }
+      // Suspend the audio context to stop playback on lock/background
+      if (audioCtx.state === 'running') {
+        audioCtx.suspend().catch(() => {})
+      }
+    } else {
+      // Resume playback when coming back to foreground
+      if (isStarted) {
+        if (audioCtx.state === 'suspended') {
+          audioCtx
+            .resume()
+            .then(() => {
+              syncMasterVolume()
+            })
+            .catch(() => {})
+        } else {
+          syncMasterVolume()
+        }
+      }
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    handleAppVisibilityChange(document.hidden)
+  })
+
+  // Capacitor native listener for reliable Android background detection
+  CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+    handleAppVisibilityChange(!isActive)
+  }).catch(() => {})
+
+  // Mobile gesture unlock listener: in case AudioContext suspended due to autoplay policy
+  const unlockAudio = () => {
+    if (audioCtx && audioCtx.state === 'suspended' && isStarted) {
+      audioCtx
+        .resume()
+        .then(() => {
+          syncMasterVolume()
+        })
+        .catch(() => {})
+    }
+  }
+  window.addEventListener('click', unlockAudio)
+  window.addEventListener('touchstart', unlockAudio, { passive: true })
+}
+
+export function initGauntletAudio() {
+  const ctx = getAudioContext()
+  if (ctx) {
+    getMasterGain(ctx)
+    loadAudioBuffer(ctx).catch(() => {})
+    prewarmSounds(ctx)
+  }
 }
 
 async function loadAudioBuffer(ctx: AudioContext): Promise<AudioBuffer | null> {
@@ -417,6 +483,7 @@ export function getSurvivalMusicRegion(livesLeft: number, startingLives: number)
 }
 
 const gauntletMusicController = {
+  init: () => initGauntletAudio(),
   start: (initialRegion?: MusicRegion) => startMusic(initialRegion),
   setState: (region: MusicRegion) => transitionToRegion(region),
   setLowHealth: (active: boolean) => setLowHealth(active),

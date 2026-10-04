@@ -29,6 +29,7 @@ const GauntletSession = lazy(() =>
   import('./pages/GauntletSession').then((m) => ({ default: m.GauntletSession }))
 )
 import type { GauntletArcadeConfig } from './lib/gauntlet'
+import { initGauntletAudio } from './hooks/useGauntletMusic'
 
 function SessionFallback() {
   return (
@@ -221,6 +222,7 @@ function App() {
           onScrollPositionChange={setScrollPosition}
           onOpenSettings={() => setShowSettings(true)}
           onStartGauntlet={async (config) => {
+            initGauntletAudio()
             try {
               const cards = await dbService.getGauntletCards(config.subjects)
               if (cards.length === 0) {
@@ -313,6 +315,25 @@ function App() {
                 learnSettings: {
                   ...DEFAULT_LEARN_SETTINGS,
                   itemCount: mistakeCards.length,
+                },
+              })
+            }}
+            onLearnAll={(allCards) => {
+              // Deduplicate cards by ID to avoid repeats from the gauntlet run
+              const seen = new Set<string>()
+              const uniqueCards = allCards.filter((c) => {
+                if (seen.has(c.id)) return false
+                seen.add(c.id)
+                return true
+              })
+              setActiveSession({
+                topicId: 'gauntlet-all',
+                topicName: 'Gauntlet Review — All Questions',
+                mode: 'looksfam',
+                customCards: uniqueCards,
+                learnSettings: {
+                  ...DEFAULT_LEARN_SETTINGS,
+                  itemCount: uniqueCards.length,
                 },
               })
             }}

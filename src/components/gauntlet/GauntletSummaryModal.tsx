@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   GraduationCap,
+  BookOpen,
   Target,
   CheckCircle2,
   XCircle,
@@ -52,6 +53,7 @@ interface GauntletSummaryModalProps {
   onPlayAgain: () => void
   onExit: () => void
   onDrillMistakes?: (cards: Card[]) => void
+  onLearnAll?: (cards: Card[]) => void
 }
 
 interface TopicStat {
@@ -64,11 +66,23 @@ interface TopicStat {
   percent: number
 }
 
+function cleanPlainTextPreview(text: string): string {
+  if (!text) return ''
+  return text
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\$\$[\s\S]*?\$\$/g, ' [formula] ')
+    .replace(/\$([^$]*)\$/g, '$1')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export const GauntletSummaryModal: React.FC<GauntletSummaryModalProps> = ({
   result,
   onPlayAgain,
   onExit,
   onDrillMistakes,
+  onLearnAll,
 }) => {
   const [expandedMistakes, setExpandedMistakes] = useState<Record<string, boolean>>({})
   const [activeSubjectTab, setActiveSubjectTab] = useState<Subject | null>(null)
@@ -154,9 +168,9 @@ export const GauntletSummaryModal: React.FC<GauntletSummaryModalProps> = ({
   const currentSubject = activeSubjectTab || activeSubjects[0] || 'MATH'
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-neutral-950/95 backdrop-blur-md text-neutral-100 font-rajdhani select-none overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex flex-col bg-neutral-950 text-neutral-100 font-rajdhani select-none overflow-y-auto gauntlet-summary-slide-up">
       {/* Top Header Bar with Back Button */}
-      <div className="shrink-0 sticky top-0 z-10 border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-md px-4 py-3 flex items-center justify-between">
+      <div className="shrink-0 sticky top-0 z-10 border-b border-neutral-800/80 bg-neutral-950 px-4 py-3 flex items-center justify-between">
         <button
           type="button"
           onClick={onExit}
@@ -224,10 +238,25 @@ export const GauntletSummaryModal: React.FC<GauntletSummaryModalProps> = ({
             <button
               type="button"
               onClick={() => onDrillMistakes(result.mistakes.map((m) => m.card))}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-300 font-display font-bold text-xs tracking-wider uppercase transition-all active:scale-[0.98] shadow-sm hover:bg-amber-500/20"
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#00ff41] text-black font-display font-bold text-xs tracking-wider uppercase transition-all active:scale-[0.98] shadow-[0_0_15px_rgba(0,255,65,0.25)] hover:bg-[#00e039] cursor-pointer"
             >
               <GraduationCap size={16} />
-              DRILL {result.mistakes.length} MISTAKES IN LOOKSFAM
+              LEARN MISSED ({result.mistakes.length})
+            </button>
+          )}
+
+          {result.allAnswers && result.allAnswers.length > 0 && onLearnAll && (
+            <button
+              type="button"
+              onClick={() => onLearnAll(result.allAnswers!.map((a) => a.card))}
+              className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-display font-bold text-xs tracking-wider uppercase transition-all active:scale-[0.98] cursor-pointer ${
+                result.mistakes.length === 0
+                  ? 'bg-[#00ff41] text-black shadow-[0_0_15px_rgba(0,255,65,0.25)] hover:bg-[#00e039]'
+                  : 'border border-neutral-700 bg-neutral-900/80 text-neutral-200 hover:border-[#00ff41]/50 hover:text-[#00ff41]'
+              }`}
+            >
+              <BookOpen size={16} />
+              LEARN ALL ({result.allAnswers.length})
             </button>
           )}
 
@@ -235,10 +264,10 @@ export const GauntletSummaryModal: React.FC<GauntletSummaryModalProps> = ({
             <button
               type="button"
               onClick={onPlayAgain}
-              className="flex items-center justify-center gap-1.5 py-3 px-4 rounded-xl bg-[#00ff41] text-black font-display font-bold text-xs tracking-wider uppercase transition-all active:scale-[0.98] shadow-[0_0_15px_rgba(0,255,65,0.25)] hover:bg-[#00e039] cursor-pointer"
+              className="flex items-center justify-center gap-1.5 py-3 px-4 rounded-xl border border-neutral-700 bg-neutral-900/80 text-neutral-200 font-display font-bold text-xs tracking-wider uppercase transition-all active:scale-[0.98] hover:border-[#00ff41]/50 hover:text-[#00ff41] cursor-pointer"
             >
               <RotateCcw size={14} />
-              PLAY AGAIN
+              RUN IT BACK
             </button>
 
             <button
@@ -375,10 +404,17 @@ export const GauntletSummaryModal: React.FC<GauntletSummaryModalProps> = ({
                             </span>
                           ) : null}
                         </div>
-                        <div
-                          className="font-medium text-neutral-200 line-clamp-2"
-                          dangerouslySetInnerHTML={{ __html: renderMath(mcq?.question || '') }}
-                        />
+
+                        {isExpanded ? (
+                          <div
+                            className="font-medium text-neutral-100 leading-relaxed text-xs"
+                            dangerouslySetInnerHTML={{ __html: renderMath(mcq?.question || '') }}
+                          />
+                        ) : (
+                          <div className="font-medium text-neutral-200 line-clamp-2 text-xs">
+                            {cleanPlainTextPreview(mcq?.question || '')}
+                          </div>
+                        )}
                       </div>
                       <div className="text-neutral-400 mt-1">
                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}

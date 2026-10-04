@@ -103,7 +103,7 @@ export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-neutral-800 bg-neutral-900/80 text-[11px] font-mono text-neutral-300">
           <Trophy size={12} className="text-amber-400" />
           <span className="text-neutral-400 font-sans font-semibold">BEST:</span>
-          <span className="text-[#00ff41] font-bold">
+          <span className={config.mode === 'survival' ? 'text-red-400 font-bold' : 'text-cyan-400 font-bold'}>
             {(config.mode === 'survival'
               ? stats?.survivalHighScore
               : stats?.timetrialHighScore
@@ -121,11 +121,11 @@ export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
             onClick={() => setConfig((prev) => ({ ...prev, mode: 'survival' }))}
             className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-display uppercase tracking-wider font-bold transition-all active:scale-[0.98] ${
               config.mode === 'survival'
-                ? 'bg-neutral-800 text-[#00ff41] shadow-[0_0_12px_rgba(0,255,65,0.2)] border border-[#00ff41]/50'
+                ? 'bg-neutral-800 text-red-400 shadow-[0_0_12px_rgba(239,68,68,0.25)] border border-red-500/50'
                 : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >
-            <Flame size={14} className={config.mode === 'survival' ? 'text-[#00ff41]' : 'text-neutral-500'} />
+            <Flame size={14} className={config.mode === 'survival' ? 'text-red-400' : 'text-neutral-500'} />
             Survival
           </button>
           <button
@@ -227,7 +227,7 @@ export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
                       onClick={() => setConfig((prev) => ({ ...prev, perQuestionSec: p.sec }))}
                       className={`py-2 px-2 rounded-xl text-xs font-display font-bold uppercase tracking-wider transition-all active:scale-95 ${
                         isActive
-                          ? 'bg-[#00ff41] text-[#0d0d0d] shadow-[0_0_12px_rgba(0,255,65,0.35)] border border-[#00ff41]'
+                          ? 'bg-[#ef4444] text-white shadow-[0_0_12px_rgba(239,68,68,0.35)] border border-[#ef4444]'
                           : 'border border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:border-neutral-700'
                       }`}
                     >
@@ -241,7 +241,9 @@ export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
             {/* DIFFICULTY MULTIPLIER BAR */}
             <div className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/60 px-3.5 py-2.5 text-xs font-mono">
               <span className="text-neutral-400 uppercase tracking-wide">DIFFICULTY MULTIPLIER</span>
-              <span className="text-[#00ff41] font-bold">Score Multiplier: {getDifficultyMultiplier()}x</span>
+              <span className={config.mode === 'survival' ? 'text-red-400 font-bold' : 'text-cyan-400 font-bold'}>
+                Score Multiplier: {getDifficultyMultiplier()}x
+              </span>
             </div>
           </div>
         )}
@@ -320,7 +322,9 @@ export const GauntletArcadeHome: React.FC<GauntletArcadeHomeProps> = ({
             className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-display font-black text-sm uppercase tracking-wider transition-all ${
               config.subjects.length === 0
                 ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed border border-neutral-700/50'
-                : 'bg-[#00ff41] text-[#0d0d0d] shadow-[0_0_20px_rgba(0,255,65,0.35)] active:scale-[0.98] cursor-pointer'
+                : config.mode === 'survival'
+                ? 'bg-[#ef4444] text-white shadow-[0_0_20px_rgba(239,68,68,0.4)] active:scale-[0.98] cursor-pointer hover:bg-red-600'
+                : 'bg-cyan-500 text-neutral-950 shadow-[0_0_20px_rgba(6,182,212,0.4)] active:scale-[0.98] cursor-pointer hover:bg-cyan-400'
             }`}
           >
             <Play size={16} className={config.subjects.length === 0 ? 'fill-neutral-500' : 'fill-current'} />

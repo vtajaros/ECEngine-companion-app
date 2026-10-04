@@ -401,10 +401,10 @@ export const dbService = {
     const tosCol = (await checkTosColumnExists()) ? 'c.tos_topic_id' : 'NULL as tos_topic_id'
     const sql = `
       SELECT 
-        id, topic_id, type, data, difficulty, tags, ${tosCol}, is_custom, order_index, created_at
-      FROM cards
-      WHERE topic_id = ?
-      ORDER BY order_index ASC, created_at ASC
+        c.id, c.topic_id, c.type, c.data, c.difficulty, c.tags, ${tosCol}, c.is_custom, c.order_index, c.created_at
+      FROM cards c
+      WHERE c.topic_id = ?
+      ORDER BY c.order_index ASC, c.created_at ASC
     `
     const rows = await executeQuery(sql, [topicId])
     return z.array(CardRowSchema).parse(rows).map(row => parseCardRow(row, topicId))

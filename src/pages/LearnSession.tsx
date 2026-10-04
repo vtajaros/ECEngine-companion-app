@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, RefreshCw, CheckCircle2, AlertCircle, RotateCcw, Sparkles, Copy, Bookmark } from 'lucide-react'
 import { dbService } from '../services/db.service'
 import { bookmarkService } from '../services/bookmark.service'
@@ -357,6 +358,8 @@ Please explain:
       return
     }
 
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' })
+
     if (currentCardIndex < activeQueue.length - 1) {
       // Advance to next question in activeQueue
       setCurrentCardIndex((prev) => prev + 1)
@@ -569,8 +572,16 @@ Please explain:
           )}
 
           {/* Question / Feedback View */}
-          {!isLoading && !error && (viewState === 'question' || viewState === 'feedback') && mcqData && (
-            <div className="flex flex-col gap-5">
+          <AnimatePresence mode="wait" initial={false}>
+            {!isLoading && !error && (viewState === 'question' || viewState === 'feedback') && mcqData && currentCard && (
+              <motion.div
+                key={`${currentCard.id}-${currentCardIndex}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.16, ease: 'easeOut' }}
+                className="flex flex-col gap-5"
+              >
               {/* Question Card */}
               <div className="relative rounded-2xl border border-neutral-800 bg-neutral-900/80 p-5 sm:p-7 shadow-sm">
                 {/* Bookmark Toggle — visible in both question and feedback states */}
@@ -637,24 +648,24 @@ Please explain:
 
                   if (isAnswered) {
                     if (isCorrect) {
-                      btnStyle = 'border-[#00ff41] bg-[#00ff41]/10 text-[#00ff41] shadow-[0_0_12px_rgba(0,255,65,0.15)] font-semibold'
+                      btnStyle = 'border-[#00ff41] bg-[#00ff41]/10 text-[#00ff41] shadow-[0_0_12px_rgba(0,255,65,0.15)] font-semibold transition-all duration-200'
                       badgeStyle = 'bg-[#00ff41]/20 text-[#00ff41] border-[#00ff41]/40'
                     } else if (isSelected) {
-                      btnStyle = 'border-red-500/80 bg-red-500/10 text-red-400 font-semibold'
+                      btnStyle = 'border-red-500/80 bg-red-500/10 text-red-400 font-semibold transition-all duration-200'
                       badgeStyle = 'bg-red-500/20 text-red-400 border-red-500/40'
                     } else {
-                      btnStyle = 'border-neutral-800/40 bg-neutral-950/40 text-neutral-500 opacity-50'
+                      btnStyle = 'border-neutral-800/40 bg-neutral-950/40 text-neutral-500 opacity-50 transition-all duration-200'
                       badgeStyle = 'bg-neutral-900/40 text-neutral-600 border-neutral-800/40'
                     }
                   }
 
                   return (
                     <button
-                      key={idx}
+                      key={`${currentCard.id}-${currentCardIndex}-${idx}`}
                       type="button"
                       disabled={isAnswered}
                       onClick={() => submitAnswer(idx)}
-                      className={`flex items-start gap-3 rounded-xl border p-3.5 sm:p-4 text-left transition-all active:scale-[0.99] ${btnStyle}`}
+                      className={`flex items-start gap-3 rounded-xl border p-3.5 sm:p-4 text-left active:scale-[0.99] cursor-pointer ${btnStyle}`}
                     >
                       <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border font-mono text-xs font-bold leading-none ${badgeStyle}`}>
                         {letter}
@@ -767,8 +778,9 @@ Please explain:
                   </div>
                 </div>
               )}
-            </div>
+            </motion.div>
           )}
+        </AnimatePresence>
 
           {/* Round Complete State */}
           {viewState === 'round-complete' && (

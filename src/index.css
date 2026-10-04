@@ -99,3 +99,78 @@ html, body {
   height: 100%;
   overflow: hidden;
 }
+
+/* ── Gauntlet Hardware-Accelerated Mobile Animations ──────────────────────── */
+
+@keyframes gauntlet-wrong-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-6px, 0, 0); }
+  40% { transform: translate3d(6px, 0, 0); }
+  60% { transform: translate3d(-4px, 0, 0); }
+  80% { transform: translate3d(4px, 0, 0); }
+}
+
+.gauntlet-card-shake {
+  animation: gauntlet-wrong-shake 250ms ease-in-out;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+@keyframes gauntlet-red-flash {
+  0% { opacity: 0; }
+  25% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
+.gauntlet-edge-flash {
+  animation: gauntlet-red-flash 350ms ease-out forwards;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  will-change: opacity;
+}
+
+@keyframes gauntlet-life-pulse {
+  0%, 100% { transform: scale3d(1, 1, 1); filter: drop-shadow(0 0 0px #ef4444); }
+  30% { transform: scale3d(1.35, 1.35, 1); filter: drop-shadow(0 0 10px #ef4444); }
+  60% { transform: scale3d(0.95, 0.95, 1); filter: drop-shadow(0 0 14px #ef4444); }
+}
+
+.gauntlet-heart-pulse {
+  animation: gauntlet-life-pulse 400ms ease-in-out;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+@keyframes gauntlet-timer-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-2px, 0, 0); }
+  40% { transform: translate3d(2px, 0, 0); }
+  60% { transform: translate3d(-1px, 0, 0); }
+  80% { transform: translate3d(1px, 0, 0); }
+}
+
+.gauntlet-timer-shake {
+  animation: gauntlet-timer-shake 250ms ease-in-out infinite;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+@keyframes gauntlet-slide-up {
+  0% {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.gauntlet-summary-slide-up {
+  animation: gauntlet-slide-up 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+

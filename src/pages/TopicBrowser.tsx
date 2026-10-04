@@ -1231,25 +1231,9 @@ export function TopicBrowser({
     </>
   )}
 
-      {/* Bottom Tab Bar — Flashcards | LooksFam | Formulas, plain style */}
+      {/* Bottom Tab Bar — LooksFam | Flashcards | Formulas | Gauntlet */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-neutral-800/90 bg-neutral-950/95 backdrop-blur-md pb-[env(safe-area-inset-bottom,0px)]">
         <div className="mx-auto flex max-w-md items-center justify-around px-2 py-2">
-          <button
-            type="button"
-            onClick={() => startTransition(() => setMode('flashcards'))}
-            className={`flex flex-1 flex-col items-center gap-1 py-1 text-xs font-medium transition-all active:scale-95 ${
-              mode === 'flashcards'
-                ? 'text-[#00ff41]'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <Layers
-              size={20}
-              className={mode === 'flashcards' ? 'drop-shadow-[0_0_8px_rgba(0,255,65,0.4)]' : ''}
-            />
-            <span className="text-[11px] tracking-tight">Flashcards</span>
-          </button>
-
           <button
             type="button"
             onClick={() => startTransition(() => setMode('looksfam'))}
@@ -1264,6 +1248,22 @@ export function TopicBrowser({
               className={mode === 'looksfam' ? 'drop-shadow-[0_0_8px_rgba(0,255,65,0.4)]' : ''}
             />
             <span className="text-[11px] tracking-tight">LooksFam</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => startTransition(() => setMode('flashcards'))}
+            className={`flex flex-1 flex-col items-center gap-1 py-1 text-xs font-medium transition-all active:scale-95 ${
+              mode === 'flashcards'
+                ? 'text-[#00ff41]'
+                : 'text-neutral-400 hover:text-neutral-200'
+            }`}
+          >
+            <Layers
+              size={20}
+              className={mode === 'flashcards' ? 'drop-shadow-[0_0_8px_rgba(0,255,65,0.4)]' : ''}
+            />
+            <span className="text-[11px] tracking-tight">Flashcards</span>
           </button>
 
           <button

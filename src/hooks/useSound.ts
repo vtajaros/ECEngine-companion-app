@@ -1,9 +1,9 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useEffect } from 'react'
 import wrongSfx from '../assets/sounds/wrong.wav'
 import gameOverSfx from '../assets/sounds/gameover.mp3'
 import plusOneSfx from '../assets/sounds/plusone.mp3'
 
-export type SoundEvent = 'correct' | 'wrong' | 'roundComplete' | 'finish' | 'lifeBonus' | 'streakMilestone' | 'gameOver'
+export type SoundEvent = 'correct' | 'wrong' | 'roundComplete' | 'finish' | 'lifeBonus' | 'streakMilestone' | 'gameOver' | 'tick' | 'go'
 
 const SESSION_MUTE_KEY = 'ecengine_sounds_muted'
 const SESSION_VOLUME_KEY = 'ecengine_sound_volume'
@@ -82,6 +82,38 @@ function createAudioContext(): AudioContext | null {
 let cachedWrongBuffer: AudioBuffer | null = null
 let cachedGameOverBuffer: AudioBuffer | null = null
 let cachedPlusOneBuffer: AudioBuffer | null = null
+
+export function prewarmSounds(providedCtx?: AudioContext | null) {
+  const ctx = providedCtx || createAudioContext()
+  if (!ctx) return
+  if (!cachedWrongBuffer) {
+    fetch(wrongSfx)
+      .then((res) => res.arrayBuffer())
+      .then((buf) => ctx.decodeAudioData(buf))
+      .then((decoded) => {
+        cachedWrongBuffer = decoded
+      })
+      .catch(() => {})
+  }
+  if (!cachedGameOverBuffer) {
+    fetch(gameOverSfx)
+      .then((res) => res.arrayBuffer())
+      .then((buf) => ctx.decodeAudioData(buf))
+      .then((decoded) => {
+        cachedGameOverBuffer = decoded
+      })
+      .catch(() => {})
+  }
+  if (!cachedPlusOneBuffer) {
+    fetch(plusOneSfx)
+      .then((res) => res.arrayBuffer())
+      .then((buf) => ctx.decodeAudioData(buf))
+      .then((decoded) => {
+        cachedPlusOneBuffer = decoded
+      })
+      .catch(() => {})
+  }
+}
 
 function playBuffer(ctx: AudioContext, buffer: AudioBuffer, volume = 0.6) {
   const vol = getSoundVolume()
@@ -215,8 +247,44 @@ function playStreakMilestoneSound(ctx: AudioContext) {
   })
 }
 
+function playTickSound(ctx: AudioContext) {
+  const vol = getSoundVolume()
+  const o = ctx.createOscillator()
+  const g = ctx.createGain()
+  o.connect(g)
+  g.connect(ctx.destination)
+  o.type = 'sine'
+  o.frequency.setValueAtTime(880, ctx.currentTime)
+  g.gain.setValueAtTime(0.18 * vol, ctx.currentTime)
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.06)
+  o.start(ctx.currentTime)
+  o.stop(ctx.currentTime + 0.06)
+}
+
+function playGoSound(ctx: AudioContext) {
+  const vol = getSoundVolume()
+  const notes = [659.25, 880]
+  notes.forEach((freq, i) => {
+    const o = ctx.createOscillator()
+    const g = ctx.createGain()
+    o.connect(g)
+    g.connect(ctx.destination)
+    o.type = 'sine'
+    o.frequency.value = freq
+    const t = ctx.currentTime + i * 0.1
+    g.gain.setValueAtTime(0.2 * vol, t)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15)
+    o.start(t)
+    o.stop(t + 0.15)
+  })
+}
+
 export function useSound() {
   const ctxRef = useRef<AudioContext | null>(null)
+
+  useEffect(() => {
+    prewarmSounds(ctxRef.current)
+  }, [])
 
   const getCtx = useCallback(() => {
     if (!ctxRef.current) {
@@ -255,6 +323,12 @@ export function useSound() {
             break
           case 'gameOver':
             playCustomGameOverSound(ctx)
+            break
+          case 'tick':
+            playTickSound(ctx)
+            break
+          case 'go':
+            playGoSound(ctx)
             break
         }
       } catch {
