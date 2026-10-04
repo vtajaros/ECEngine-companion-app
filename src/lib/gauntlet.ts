@@ -76,6 +76,43 @@ export const TUNING = {
   fastWrongMult: 1.5,
   // survival rewards
   lifeBonusStreakInterval: 10, // +1 life every 10 consecutive correct answers
+  lifeBonusScoreInterval: 20,  // +1 life every 20 total correct answers
+  skipEarnInterval: 20,        // +1 skip credit every 20 consecutive correct answers
+}
+
+export interface SkipState {
+  skipsAvailable: number
+  skipEarnStreak: number
+}
+
+/**
+ * Updates skip-earn streak and banked skip credits.
+ * - 'correct': increments skipEarnStreak; every 20 consecutive correct awards +1 skip credit.
+ * - 'wrong' | 'timeout': resets skipEarnStreak to 0.
+ * - 'use_skip': consumes 1 skip credit and resets skipEarnStreak to 0.
+ */
+export function updateSkipState(
+  current: SkipState,
+  action: 'correct' | 'wrong' | 'timeout' | 'use_skip',
+): SkipState {
+  if (action === 'use_skip') {
+    return {
+      skipsAvailable: Math.max(0, current.skipsAvailable - 1),
+      skipEarnStreak: 0,
+    }
+  }
+  if (action === 'correct') {
+    const nextStreak = current.skipEarnStreak + 1
+    const earned = nextStreak > 0 && nextStreak % TUNING.skipEarnInterval === 0
+    return {
+      skipsAvailable: current.skipsAvailable + (earned ? 1 : 0),
+      skipEarnStreak: nextStreak,
+    }
+  }
+  return {
+    skipsAvailable: current.skipsAvailable,
+    skipEarnStreak: 0,
+  }
 }
 
 export const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n))
@@ -176,6 +213,11 @@ export function scoreAnswer(i: ScoreInput): ScoreResult {
 /** True when a correct answer streak awards a bonus life (every 10-streak in Survival). */
 export function isLifeBonusStreak(streak: number): boolean {
   return streak > 0 && streak % TUNING.lifeBonusStreakInterval === 0
+}
+
+/** True when score milestone (every 20 correct answers) in survival mode awards a bonus life. */
+export function isScoreLifeBonus(correctCount: number): boolean {
+  return correctCount > 0 && correctCount % TUNING.lifeBonusScoreInterval === 0
 }
 
 /** Survival mode difficulty ramp: gradually targets heavier questions as streak increases. */

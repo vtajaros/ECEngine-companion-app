@@ -35,3 +35,6 @@ dist-ssr/
 # Capacitor
 android/
 ios/
+
+# Scratch & Personal Notes
+todo.md

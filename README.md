@@ -23,12 +23,37 @@ Built with **React 19**, **TypeScript**, **Tailwind CSS**, and **Capacitor 8**.
 - **AI Context & Explanations**: One-tap prompt generator (`Get Context`) with native Android clipboard integration for external LLMs (ChatGPT, Gemini, Claude), plus in-app AI explanation panels with desktop-parity markdown formatting, terminal styling (Orbitron + JetBrains Mono), numbered list segmentation, callout blocks, and robust inline KaTeX math rendering.
 
 ### 📚 LooksFam / Learn Mode
-- **Multiple-Choice Question Drills**: Instant feedback and choice scrambling to eliminate positional memory bias.
+- **Multiple-Choice Question Drills**: Instant feedback and choice scrambling to eliminate positional memory bias. Positioned as the primary, leftmost tab for immediate drilling.
 - **Pipelined Audio Read-Aloud**: Instant question narration with sentence streaming, math symbol normalization (`Ω` → "ohms", `μ` → "micro", `√` → "square root of"), and automatic silence on answer selection, navigation, or phone screen lock.
-- **Sound Effects**: Correct/wrong/round-complete audio feedback.
+- **Sound Effects & Smooth Transitions**: Correct/wrong/round-complete audio feedback with framer-motion question fade transitions and ghost-highlight protection.
 - **Full Solution Breakdowns**: KaTeX-rendered mathematical derivations, step-by-step explanations, callout boxes, and interactive diagram lightboxes.
 - **Active Partition Queue**: Missed questions automatically requeue until 100% mastery is reached for the session.
 - **Pre-Launch Configuration**: Custom question count, random sampling, choice shuffling, and bookmark filtering.
+
+### 🎮 Gauntlet Arcade Mode (Survival & Time Trial)
+- **High-Stakes Survival Challenge**:
+  - Configurable lives (3, 5, or Unlimited) and per-question timers (30s, 1m, 2m, or Unlimited).
+  - Dynamic difficulty ramp that gradually targets heavier questions as streak climbs.
+  - **Survival Life Bonus Milestones**:
+    - **10-Streak Bonus**: +1 Life on every 10 consecutive correct answers.
+    - **20-Correct Bonus**: +1 Life on every 20 total correct answers.
+    - **Dual Hit**: +2 Lives awarded simultaneously when both milestones align.
+    - Dynamic life recovery toasts, sound effects, and low-health music alert resets.
+- **Time Trial Sprint**:
+  - Global countdown timer (5m, 10m, 25m, 1 hr) with real-time progress bar, urgency shake animations, and pace feedback.
+- **Skips System & Skip Credits**:
+  - Starts with 1 banked skip credit; earns +1 skip credit for every 20 consecutive correct streak.
+  - Consuming a skip passes the question without penalty and **preserves current streak**.
+- **3-2-1-GO! Countdown Splash Screen**:
+  - Animated pre-round countdown with Web Audio synthesized tick/go tones and audio prewarming for seamless playback from question #1.
+- **Dynamic Adaptive Background Music**:
+  - Responsive soundtrack adapting to gameplay states (`stealth` countdown $\rightarrow$ `enemiesNearby` / `battle1` $\rightarrow$ `combatOver` victory/gameover), with low-health warning loops and native screen-lock pause/resume handling.
+- **Comprehensive Post-Run Answer Review**:
+  - Filter tabs matching desktop: **All**, **Wrong**, **Skip/Time**, and **Correct**.
+  - Metric chips: Sequence `#`, Subject color tag, TOS Code or Deck Folder name, Outcome badge (`CheckCircle2`, `XCircle`, `SkipForward`, `Timer`).
+  - Comparative answers (`D → C` or `A`), timing, and pace markers (`TOO FAST`, `SLOW`, `+STREAK`).
+  - Tap-to-expand accordion with full LaTeX question rendering, image diagrams, color-coded choice breakdown, and complete solution explanations.
+  - **One-Tap Re-drilling**: Direct `LEARN MISSED` and `LEARN ALL` transitions into LooksFam drills, plus `RUN IT BACK` reshuffled instant rematches.
 
 ### 📝 Test Mode & Test Paper View
 - **Timed Exam Simulation**: Real-time countdown timer, question status navigation rail, choice scrambling, audio cues, and flagging.
@@ -176,6 +201,10 @@ ecengine_companion/
 │   │   ├── fonts/                    # Self-hosted brand fonts (Orbitron, JetBrains Mono, Rajdhani)
 │   │   └── sounds/                   # Audio feedback assets
 │   ├── components/
+│   │   ├── gauntlet/                 # Gauntlet Arcade components
+│   │   │   ├── GauntletArcadeHome.tsx# Config & mode setup (Survival vs Time Trial)
+│   │   │   ├── GauntletCountdown.tsx # 3-2-1-GO! splash overlay with synthesized audio
+│   │   │   └── GauntletSummaryModal.tsx # Full answer review, outcome filters & mastery
 │   │   ├── AutoFitText.tsx           # Real-time DOM width math & KaTeX auto-fit scaler
 │   │   ├── ExplanationPanel.tsx      # LooksFam AI explanation bottom sheet
 │   │   ├── FlashcardContextPanel.tsx # Flashcard AI breakdown panel
@@ -187,11 +216,13 @@ ecengine_companion/
 │   │   ├── TestNavRail.tsx           # Exam question navigation drawer
 │   │   └── TestSettingsModal.tsx     # Pre-launch timed test configuration
 │   ├── hooks/
-│   │   ├── useSound.ts               # Sound effect playback
+│   │   ├── useGauntletMusic.ts       # Adaptive background battle music state machine
+│   │   ├── useSound.ts               # Sound effect playback & audio prewarming
 │   │   └── useTTS.ts                 # React hook delegating to TTSService singleton
-│   ├── lib/                          # Pure utility libraries (latex, subjectColors, sampling)
+│   ├── lib/                          # Pure utility libraries (gauntlet, latex, subjectColors, sampling)
 │   ├── pages/
 │   │   ├── FlashcardSession.tsx      # Flashcard & Formula study runner
+│   │   ├── GauntletSession.tsx       # Gauntlet arcade gameplay runner
 │   │   ├── LearnSession.tsx          # LooksFam MCQ drill runner
 │   │   ├── Settings.tsx              # Database import & AI key manager
 │   │   ├── TestMode.tsx              # Timed exam simulation runner
@@ -204,6 +235,7 @@ ecengine_companion/
 │   │   ├── dbImport.service.ts       # File picker & database import
 │   │   ├── explain.service.ts        # Multi-provider LLM API client
 │   │   ├── flashcardBookmark.service.ts # Flashcard & Formula bookmark manager
+│   │   ├── gauntlet-storage.service.ts # High scores & best streaks storage
 │   │   ├── image.service.ts          # Unpacked image resolution
 │   │   └── tts.service.ts            # Pipelined sentence streaming & cancellation TTS service
 │   ├── types/                        # Shared TypeScript models (Card, MCQData, FlashcardData, FormulaData)

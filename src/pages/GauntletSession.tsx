@@ -7,6 +7,7 @@ import {
   Volume2,
   VolumeX,
   Bookmark,
+  SkipForward,
 } from 'lucide-react'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Card, MCQData } from '../types'
@@ -17,6 +18,8 @@ import {
   difficultyWeight,
   scoreAnswer,
   isLifeBonusStreak,
+  isScoreLifeBonus,
+  updateSkipState,
   LINGER_CORRECT_MS,
   LINGER_WRONG_MS,
 } from '../lib/gauntlet'
@@ -69,9 +72,11 @@ interface QuestionViewProps {
   isAnsweringLocked: boolean
   isBookmarked: boolean
   shakeWrong: boolean
+  skipsAvailable: number
   onChoiceClick: (idx: number) => void
   onToggleBookmark: () => void
   onOpenLightbox: (src: string) => void
+  onSkip: () => void
 }
 
 const QuestionView = React.memo<QuestionViewProps>(
@@ -85,9 +90,11 @@ const QuestionView = React.memo<QuestionViewProps>(
     isAnsweringLocked,
     isBookmarked,
     shakeWrong,
+    skipsAvailable,
     onChoiceClick,
     onToggleBookmark,
     onOpenLightbox,
+    onSkip,
   }) => {
     return (
       <main className="flex-1 px-4 sm:px-6 flex flex-col py-6 pb-16 overflow-y-auto">
@@ -217,6 +224,19 @@ const QuestionView = React.memo<QuestionViewProps>(
                 )
               })}
             </div>
+
+            {/* Bottom Actions: Skip Button */}
+            <div className="flex items-center justify-end pt-1">
+              <button
+                type="button"
+                disabled={isAnsweringLocked || skipsAvailable <= 0}
+                onClick={onSkip}
+                className="px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase tracking-wider text-neutral-400 hover:text-neutral-100 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 shadow-sm"
+              >
+                <SkipForward size={14} />
+                SKIP ({skipsAvailable})
+              </button>
+            </div>
           </div>
         </div>
       </main>
@@ -249,6 +269,10 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
   const [totalAnswered, setTotalAnswered] = useState(0)
   const [correctCount, setCorrectCount] = useState(0)
   const [wrongCount, setWrongCount] = useState(0)
+
+  // Skip mechanics matching desktop (1 starting skip credit, +1 earned every 20 streak)
+  const [skipsAvailable, setSkipsAvailable] = useState<number>(1)
+  const [skipEarnStreak, setSkipEarnStreak] = useState<number>(0)
 
   // Audio toggle
   const [isSfxMuted, setIsSfxMuted] = useState(() => getSoundsMuted())
@@ -512,6 +536,20 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
       setTimeout(() => setPulseHeart(false), 400)
     }
 
+    const scored = scoreAnswer({
+      outcome: 'timeout',
+      timeMs: config.perQuestionSec * 1000,
+      parMs: activeQuestion.parMs,
+      weight: activeQuestion.weight,
+      streakBefore: streak,
+    })
+    const newScore = Math.max(0, score + scored.points)
+    setScore(newScore)
+
+    const nextSkipState = updateSkipState({ skipsAvailable, skipEarnStreak }, 'timeout')
+    setSkipsAvailable(nextSkipState.skipsAvailable)
+    setSkipEarnStreak(nextSkipState.skipEarnStreak)
+
     setLives(nextLives)
     setStreak(0)
     setWrongCount((w) => w + 1)
@@ -529,9 +567,12 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
     const answerRec: GauntletAnswerRecord = {
       card: activeQuestion.card,
       isCorrect: false,
+      outcome: 'timeout',
       chosenIndex: null,
       answerIndex: activeQuestion.answerIndex,
       timeSpentMs: config.perQuestionSec * 1000,
+      points: scored.points,
+      parMs: activeQuestion.parMs,
     }
     const updatedAnswers = [...allAnswers, answerRec]
     setAllAnswers(updatedAnswers)
@@ -546,7 +587,7 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
 
     if (lingerTimerRef.current) clearTimeout(lingerTimerRef.current)
     if (config.startingLives > 0 && nextLives <= 0) {
-      lingerTimerRef.current = setTimeout(() => finishRun(updatedMistakes, updatedAnswers, score, bestStreak), LINGER_WRONG_MS)
+      lingerTimerRef.current = setTimeout(() => finishRun(updatedMistakes, updatedAnswers, newScore, bestStreak), LINGER_WRONG_MS)
     } else {
       lingerTimerRef.current = setTimeout(() => {
         setCardIndex((c) => c + 1)
@@ -567,7 +608,10 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
     gauntletMusic,
     finishRun,
     score,
+    streak,
     bestStreak,
+    skipsAvailable,
+    skipEarnStreak,
   ])
 
   // Time Trial Session Countdown
@@ -630,16 +674,6 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
       const isCorrect = choiceIdx === activeQuestion.answerIndex
       setTotalAnswered((t) => t + 1)
 
-      const answerRec: GauntletAnswerRecord = {
-        card: activeQuestion.card,
-        isCorrect,
-        chosenIndex: choiceIdx,
-        answerIndex: activeQuestion.answerIndex,
-        timeSpentMs: elapsedMs,
-      }
-      const updatedAnswers = [...allAnswers, answerRec]
-      setAllAnswers(updatedAnswers)
-
       if (isCorrect) {
         play('correct')
         const scored = scoreAnswer({
@@ -652,22 +686,67 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
 
         const newScore = Math.max(0, score + scored.points)
         const nextStreak = streak + 1
+        const nextCorrect = correctCount + 1
         const newBestStreak = Math.max(bestStreak, nextStreak)
 
         setScore(newScore)
         setStreak(nextStreak)
         setBestStreak(newBestStreak)
-        setCorrectCount((c) => c + 1)
+        setCorrectCount(nextCorrect)
 
-        // Survival life bonus at 10-streak intervals
-        if (config.mode === 'survival' && isLifeBonusStreak(nextStreak)) {
-          play('lifeBonus')
-          setLives((l) => l + 1)
-          if (config.startingLives > 0 && lives + 1 > 1) {
-            gauntletMusic.setLowHealth(false)
+        const answerRec: GauntletAnswerRecord = {
+          card: activeQuestion.card,
+          isCorrect: true,
+          outcome: 'correct',
+          chosenIndex: choiceIdx,
+          answerIndex: activeQuestion.answerIndex,
+          timeSpentMs: elapsedMs,
+          points: scored.points,
+          parMs: activeQuestion.parMs,
+          streakBonus: scored.streakBonus,
+        }
+        const updatedAnswers = [...allAnswers, answerRec]
+        setAllAnswers(updatedAnswers)
+
+        // Skip state update
+        const nextSkipState = updateSkipState({ skipsAvailable, skipEarnStreak }, 'correct')
+        if (nextSkipState.skipsAvailable > skipsAvailable) {
+          setNotification({ text: '+1 SKIP EARNED!', color: 'text-amber-400' })
+          setTimeout(() => setNotification(null), 1200)
+        }
+        setSkipsAvailable(nextSkipState.skipsAvailable)
+        setSkipEarnStreak(nextSkipState.skipEarnStreak)
+
+        // Survival life bonus rules:
+        // 1. +1 life on every 10 consecutive correct answers (streak milestone)
+        // 2. +1 life on every 20 total correct answers (score milestone)
+        if (config.mode === 'survival') {
+          const streakBonusAwarded = isLifeBonusStreak(nextStreak)
+          const scoreBonusAwarded = isScoreLifeBonus(nextCorrect)
+          let bonusLives = 0
+          if (streakBonusAwarded) bonusLives += 1
+          if (scoreBonusAwarded) bonusLives += 1
+
+          if (bonusLives > 0) {
+            play('lifeBonus')
+            const nextTotalLives = config.startingLives === 0 ? 0 : lives + bonusLives
+            setLives(nextTotalLives)
+            if (config.startingLives > 0 && nextTotalLives > 1) {
+              gauntletMusic.setLowHealth(false)
+            }
+            if (bonusLives >= 2) {
+              setNotification({ text: '+2 LIVES BONUS! (STREAK + SCORE)', color: 'text-[#00ff41]' })
+            } else if (streakBonusAwarded) {
+              setNotification({ text: '+1 LIFE BONUS! (10 STREAK)', color: 'text-[#00ff41]' })
+            } else {
+              setNotification({ text: '+1 LIFE BONUS! (20 CORRECT)', color: 'text-[#00ff41]' })
+            }
+            setTimeout(() => setNotification(null), 1500)
+          } else if (scored.streakBonus > 0) {
+            play('streakMilestone')
+            setNotification({ text: `+${scored.streakBonus} STREAK COMBO!`, color: 'text-amber-400' })
+            setTimeout(() => setNotification(null), 1200)
           }
-          setNotification({ text: '+1 LIFE BONUS!', color: 'text-[#00ff41]' })
-          setTimeout(() => setNotification(null), 1500)
         } else if (scored.streakBonus > 0) {
           play('streakMilestone')
           setNotification({ text: `+${scored.streakBonus} STREAK COMBO!`, color: 'text-amber-400' })
@@ -698,6 +777,23 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
         setScore(newScore)
         setStreak(0)
         setWrongCount((w) => w + 1)
+
+        const answerRec: GauntletAnswerRecord = {
+          card: activeQuestion.card,
+          isCorrect: false,
+          outcome: 'wrong',
+          chosenIndex: choiceIdx,
+          answerIndex: activeQuestion.answerIndex,
+          timeSpentMs: elapsedMs,
+          points: scored.points,
+          parMs: activeQuestion.parMs,
+        }
+        const updatedAnswers = [...allAnswers, answerRec]
+        setAllAnswers(updatedAnswers)
+
+        const nextSkipState = updateSkipState({ skipsAvailable, skipEarnStreak }, 'wrong')
+        setSkipsAvailable(nextSkipState.skipsAvailable)
+        setSkipEarnStreak(nextSkipState.skipEarnStreak)
 
         const mistake: GauntletMistake = {
           card: activeQuestion.card,
@@ -737,6 +833,7 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
     },
     [
       isAnsweringLocked,
+      isCountingDown,
       activeQuestion,
       questionStartTime,
       allAnswers,
@@ -744,14 +841,62 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
       streak,
       score,
       bestStreak,
+      correctCount,
       config.mode,
       config.startingLives,
       mistakes,
       lives,
       gauntletMusic,
       finishRun,
+      skipsAvailable,
+      skipEarnStreak,
     ]
   )
+
+  // Skip button handler matching desktop mechanics
+  const handleSkip = useCallback(() => {
+    if (isCountingDown || isAnsweringLocked || !activeQuestion || isGameOverRef.current || skipsAvailable <= 0) return
+    setIsAnsweringLocked(true)
+
+    const elapsedMs = Math.max(200, Date.now() - questionStartTime)
+    setTotalAnswered((t) => t + 1)
+
+    const nextSkipState = updateSkipState({ skipsAvailable, skipEarnStreak }, 'use_skip')
+    setSkipsAvailable(nextSkipState.skipsAvailable)
+    setSkipEarnStreak(nextSkipState.skipEarnStreak)
+
+    const answerRec: GauntletAnswerRecord = {
+      card: activeQuestion.card,
+      isCorrect: false,
+      outcome: 'skipped',
+      chosenIndex: null,
+      answerIndex: activeQuestion.answerIndex,
+      timeSpentMs: elapsedMs,
+      points: 0,
+      parMs: activeQuestion.parMs,
+    }
+    const updatedAnswers = [...allAnswers, answerRec]
+    setAllAnswers(updatedAnswers)
+
+    setNotification({ text: 'SKIPPED', color: 'text-neutral-400' })
+    setTimeout(() => setNotification(null), 1000)
+
+    if (lingerTimerRef.current) clearTimeout(lingerTimerRef.current)
+    lingerTimerRef.current = setTimeout(() => {
+      setCardIndex((c) => c + 1)
+      setSelectedChoice(null)
+      setIsAnsweringLocked(false)
+      setQuestionStartTime(Date.now())
+    }, 1200)
+  }, [
+    isCountingDown,
+    isAnsweringLocked,
+    activeQuestion,
+    skipsAvailable,
+    skipEarnStreak,
+    questionStartTime,
+    allAnswers,
+  ])
 
   // Format time trial remaining
   const timeTrialMinutes = Math.floor(timeTrialTimeLeft / 60)
@@ -918,9 +1063,11 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
           isAnsweringLocked={isAnsweringLocked}
           isBookmarked={isCurrentCardBookmarked}
           shakeWrong={shakeWrong}
+          skipsAvailable={skipsAvailable}
           onChoiceClick={handleChoiceClick}
           onToggleBookmark={handleToggleBookmark}
           onOpenLightbox={setLightboxSrc}
+          onSkip={handleSkip}
         />
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-neutral-400">
@@ -982,6 +1129,8 @@ export const GauntletSession: React.FC<GauntletSessionProps> = ({
             setTotalAnswered(0)
             setCorrectCount(0)
             setWrongCount(0)
+            setSkipsAvailable(1)
+            setSkipEarnStreak(0)
             setCardIndex(0)
             setSelectedChoice(null)
             setIsAnsweringLocked(false)

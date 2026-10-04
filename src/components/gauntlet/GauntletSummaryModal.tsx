@@ -12,6 +12,9 @@ import {
   Target,
   CheckCircle2,
   XCircle,
+  SkipForward,
+  Timer,
+  Folder,
 } from 'lucide-react'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Card, MCQData, Subject } from '../../types'
@@ -29,9 +32,13 @@ export interface GauntletMistake {
 export interface GauntletAnswerRecord {
   card: Card
   isCorrect: boolean
+  outcome?: 'correct' | 'wrong' | 'skipped' | 'timeout'
   chosenIndex: number | null
   answerIndex: number
   timeSpentMs: number
+  points?: number
+  parMs?: number
+  streakBonus?: number
 }
 
 export interface GauntletRunResult {
@@ -84,7 +91,8 @@ export const GauntletSummaryModal: React.FC<GauntletSummaryModalProps> = ({
   onDrillMistakes,
   onLearnAll,
 }) => {
-  const [expandedMistakes, setExpandedMistakes] = useState<Record<string, boolean>>({})
+  const [expandedSeqs, setExpandedSeqs] = useState<Record<number, boolean>>({})
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'wrong' | 'skipped_timeout' | 'correct'>('all')
   const [activeSubjectTab, setActiveSubjectTab] = useState<Subject | null>(null)
 
   // Intercept hardware/gesture back button on Android to exit summary
@@ -97,12 +105,59 @@ export const GauntletSummaryModal: React.FC<GauntletSummaryModalProps> = ({
     }
   }, [onExit])
 
-  const toggleMistake = (cardId: string) => {
-    setExpandedMistakes((prev) => ({
+  const toggleItem = (seq: number) => {
+    setExpandedSeqs((prev) => ({
       ...prev,
-      [cardId]: !prev[cardId],
+      [seq]: !prev[seq],
     }))
   }
+
+  // Answer records list for review (fallback to mistakes if allAnswers was empty)
+  const answersList: GauntletAnswerRecord[] = useMemo(() => {
+    if (result.allAnswers && result.allAnswers.length > 0) {
+      return result.allAnswers
+    }
+    return result.mistakes.map((m): GauntletAnswerRecord => ({
+      card: m.card,
+      isCorrect: false,
+      outcome: 'wrong',
+      chosenIndex: m.chosenIndex,
+      answerIndex: m.answerIndex,
+      timeSpentMs: m.timeSpentMs,
+      points: -50,
+      parMs: 6000,
+      streakBonus: 0,
+    }))
+  }, [result.allAnswers, result.mistakes])
+
+  const totalCount = answersList.length
+  const wrongCount = answersList.filter(
+    (a) => a.outcome === 'wrong' || (!a.isCorrect && a.outcome !== 'skipped' && a.outcome !== 'timeout')
+  ).length
+  const skippedTimeoutCount = answersList.filter(
+    (a) => a.outcome === 'skipped' || a.outcome === 'timeout'
+  ).length
+  const correctCount = answersList.filter(
+    (a) => a.isCorrect || a.outcome === 'correct'
+  ).length
+
+  const filteredAnswers = useMemo(() => {
+    return answersList
+      .map((item, originalIndex) => ({ item, seq: originalIndex + 1 }))
+      .filter(({ item }) => {
+        if (reviewFilter === 'all') return true
+        if (reviewFilter === 'wrong') {
+          return item.outcome === 'wrong' || (!item.isCorrect && item.outcome !== 'skipped' && item.outcome !== 'timeout')
+        }
+        if (reviewFilter === 'skipped_timeout') {
+          return item.outcome === 'skipped' || item.outcome === 'timeout'
+        }
+        if (reviewFilter === 'correct') {
+          return item.isCorrect || item.outcome === 'correct'
+        }
+        return true
+      })
+  }, [answersList, reviewFilter])
 
   const accuracy =
     result.totalAnswered > 0
@@ -362,117 +417,274 @@ export const GauntletSummaryModal: React.FC<GauntletSummaryModalProps> = ({
           </div>
         )}
 
-        {/* Mistakes Review List */}
-        {result.mistakes.length > 0 && (
-          <div className="space-y-2.5 pt-2 pb-6">
-            <div className="flex items-center justify-between text-xs font-bold text-neutral-400 uppercase tracking-wider px-1">
-              <span>MISTAKES BREAKDOWN ({result.mistakes.length})</span>
+        {/* Answer Review Section (Full Review with Outcome Filters) */}
+        {totalCount > 0 && (
+          <div className="space-y-2.5 pt-2 pb-8">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between text-xs font-bold text-neutral-300 uppercase tracking-wider px-1">
+                <span>ANSWER REVIEW ({filteredAnswers.length}/{totalCount})</span>
+              </div>
+
+              {/* Filter Tabs matching desktop mode */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs font-mono font-bold">
+                <button
+                  type="button"
+                  onClick={() => setReviewFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg border transition-all whitespace-nowrap active:scale-95 ${
+                    reviewFilter === 'all'
+                      ? 'bg-neutral-800 text-neutral-100 border-neutral-600 shadow-sm'
+                      : 'bg-neutral-900/60 text-neutral-400 border-neutral-800 hover:text-neutral-200'
+                  }`}
+                >
+                  All ({totalCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReviewFilter('wrong')}
+                  className={`px-2.5 py-1 rounded-lg border transition-all whitespace-nowrap active:scale-95 ${
+                    reviewFilter === 'wrong'
+                      ? 'bg-red-500/20 text-red-400 border-red-500/50 shadow-sm'
+                      : 'bg-neutral-900/60 text-neutral-400 border-neutral-800 hover:text-red-400'
+                  }`}
+                >
+                  Wrong ({wrongCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReviewFilter('skipped_timeout')}
+                  className={`px-2.5 py-1 rounded-lg border transition-all whitespace-nowrap active:scale-95 ${
+                    reviewFilter === 'skipped_timeout'
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 shadow-sm'
+                      : 'bg-neutral-900/60 text-neutral-400 border-neutral-800 hover:text-amber-400'
+                  }`}
+                >
+                  Skip/Time ({skippedTimeoutCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReviewFilter('correct')}
+                  className={`px-2.5 py-1 rounded-lg border transition-all whitespace-nowrap active:scale-95 ${
+                    reviewFilter === 'correct'
+                      ? 'bg-[#00ff41]/20 text-[#00ff41] border-[#00ff41]/50 shadow-sm'
+                      : 'bg-neutral-900/60 text-neutral-400 border-neutral-800 hover:text-[#00ff41]'
+                  }`}
+                >
+                  Correct ({correctCount})
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              {result.mistakes.map(({ card, chosenIndex, answerIndex }, idx) => {
-                const mcq = card.data as MCQData
-                const isExpanded = Boolean(expandedMistakes[card.id])
-                const choices = mcq?.choices || []
-                const tos = getTosTopicById(card.tosTopicId)
-                const subject = (card.subject || tos?.subject || 'MATH') as Subject
-                const theme = SUBJECT_THEME_COLORS[subject]
+            {/* Answer List */}
+            {filteredAnswers.length === 0 ? (
+              <div className="py-8 text-center text-neutral-500 font-mono text-xs uppercase tracking-wider rounded-xl border border-neutral-800/80 bg-neutral-900/30">
+                No answers match the selected filter
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredAnswers.map(({ item, seq }) => {
+                  const mcq = item.card.data as MCQData
+                  const isExpanded = Boolean(expandedSeqs[seq])
+                  const choices = mcq?.choices || []
+                  const tos = getTosTopicById(item.card.tosTopicId)
+                  const subject = (item.card.subject || tos?.subject || 'MATH') as Subject
+                  const theme = SUBJECT_THEME_COLORS[subject]
+                  const outcome = item.outcome || (item.isCorrect ? 'correct' : 'wrong')
+                  const correctLetter = String.fromCharCode(65 + item.answerIndex)
+                  const pickedLetter =
+                    item.chosenIndex !== null ? String.fromCharCode(65 + item.chosenIndex) : '—'
+                  const parMs = item.parMs || 6000
+                  const isTooFast = outcome === 'wrong' && item.timeSpentMs < parMs * 0.25
+                  const isSlow = item.timeSpentMs > parMs * 1.5
 
-                return (
-                  <div
-                    key={card.id || idx}
-                    className="rounded-xl border border-neutral-800/80 bg-neutral-900/40 overflow-hidden transition-all text-xs"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggleMistake(card.id)}
-                      className="w-full p-3 flex items-start justify-between gap-2 text-left hover:bg-neutral-800/40"
+                  return (
+                    <div
+                      key={seq}
+                      className={`rounded-xl border transition-all text-xs overflow-hidden ${
+                        isExpanded
+                          ? 'bg-neutral-900/90 border-neutral-700 shadow-md'
+                          : 'bg-neutral-900/40 hover:bg-neutral-900/70 border-neutral-800/80'
+                      }`}
                     >
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center gap-1.5 text-[10px] text-neutral-400 font-mono flex-wrap">
-                          <span className="font-bold text-red-400">#{idx + 1}</span>
-                          <span className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${theme.border} ${theme.bg} ${theme.text}`}>
-                            {subject}
-                          </span>
-                          {tos ? (
-                            <span className="px-1.5 py-0.5 rounded bg-neutral-800/80 text-neutral-300 border border-neutral-700/80">
-                              {tos.code} {tos.title}
+                      <button
+                        type="button"
+                        onClick={() => toggleItem(seq)}
+                        className="w-full p-3 flex flex-col gap-2 text-left active:bg-neutral-800/40"
+                      >
+                        {/* Top Line: Sequence, Subject, Deck/TOS, Outcome Icon, Comparison, Points, Chevron */}
+                        <div className="flex items-center justify-between gap-2 w-full font-mono text-[10px]">
+                          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                            <span className="font-bold text-neutral-400 w-5">#{seq}</span>
+
+                            <span
+                              className={`px-1.5 py-0.5 rounded border font-bold ${theme.border} ${theme.bg} ${theme.text}`}
+                            >
+                              {subject}
                             </span>
-                          ) : card.deckName ? (
-                            <span className="px-1.5 py-0.5 rounded bg-neutral-800/80 text-neutral-300 border border-neutral-700/80 truncate max-w-[150px]">
-                              {card.deckName}
+
+                            {tos ? (
+                              <span className="px-1.5 py-0.5 rounded bg-neutral-800/80 text-neutral-300 border border-neutral-700/80">
+                                {tos.code}
+                              </span>
+                            ) : item.card.deckName ? (
+                              <span className="px-1.5 py-0.5 rounded bg-neutral-800/80 text-neutral-300 border border-neutral-700/80 truncate max-w-[130px] inline-flex items-center gap-1">
+                                <Folder size={10} className="text-neutral-500 shrink-0" />
+                                <span className="truncate">{item.card.deckName}</span>
+                              </span>
+                            ) : null}
+
+                            <span className="shrink-0 flex items-center">
+                              {outcome === 'correct' && (
+                                <CheckCircle2 size={14} className="text-[#00ff41]" />
+                              )}
+                              {outcome === 'wrong' && (
+                                <XCircle size={14} className="text-red-400" />
+                              )}
+                              {outcome === 'skipped' && (
+                                <SkipForward size={14} className="text-amber-400" />
+                              )}
+                              {outcome === 'timeout' && (
+                                <Timer size={14} className="text-red-400" />
+                              )}
                             </span>
-                          ) : null}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {/* Letters Comparison */}
+                            <div className="flex items-center gap-1 font-bold">
+                              {outcome === 'correct' ? (
+                                <span className="text-[#00ff41]">{correctLetter}</span>
+                              ) : (
+                                <>
+                                  <span
+                                    className={
+                                      item.chosenIndex !== null ? 'text-red-400' : 'text-neutral-500'
+                                    }
+                                  >
+                                    {pickedLetter}
+                                  </span>
+                                  <span className="text-neutral-600 text-[9px]">→</span>
+                                  <span className="text-[#00ff41]">{correctLetter}</span>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Time spent */}
+                            <span className="text-neutral-500 text-[10px]">
+                              {(item.timeSpentMs / 1000).toFixed(1)}s
+                            </span>
+
+                            {/* Points */}
+                            {item.points !== undefined && (
+                              <span
+                                className={`font-bold w-12 text-right ${
+                                  item.points > 0
+                                    ? 'text-[#00ff41]'
+                                    : item.points < 0
+                                    ? 'text-red-400'
+                                    : 'text-neutral-500'
+                                }`}
+                              >
+                                {item.points > 0 ? `+${item.points}` : item.points}
+                              </span>
+                            )}
+
+                            <div className="text-neutral-500">
+                              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            </div>
+                          </div>
                         </div>
 
-                        {isExpanded ? (
+                        {/* Bottom Line: Question Stem Preview and Tags */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-medium text-neutral-200 line-clamp-1 text-xs flex-1">
+                            {cleanPlainTextPreview(mcq?.question || '')}
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0 font-mono text-[9px]">
+                            {isTooFast && (
+                              <span className="px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30 font-bold">
+                                TOO FAST
+                              </span>
+                            )}
+                            {isSlow && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 font-bold">
+                                SLOW
+                              </span>
+                            )}
+                            {item.streakBonus && item.streakBonus > 0 ? (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 font-bold">
+                                +{item.streakBonus} STREAK
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Collapsible Details */}
+                      {isExpanded && (
+                        <div className="px-3 pb-3 pt-2 border-t border-neutral-800/80 space-y-2.5 bg-neutral-950/70">
+                          {/* Full Question Text */}
                           <div
                             className="font-medium text-neutral-100 leading-relaxed text-xs"
                             dangerouslySetInnerHTML={{ __html: renderMath(mcq?.question || '') }}
                           />
-                        ) : (
-                          <div className="font-medium text-neutral-200 line-clamp-2 text-xs">
-                            {cleanPlainTextPreview(mcq?.question || '')}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-neutral-400 mt-1">
-                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                      </div>
-                    </button>
 
-                    {/* Collapsible Details */}
-                    {isExpanded && (
-                      <div className="px-3 pb-3 pt-1 border-t border-neutral-800/80 space-y-2 bg-neutral-950/60">
-                        {/* Choices */}
-                        <div className="space-y-1 pt-1">
-                          {choices.map((choice, cIdx) => {
-                            const isCorrect = cIdx === answerIndex
-                            const isChosen = cIdx === chosenIndex
+                          {/* Choices */}
+                          <div className="space-y-1 pt-1">
+                            {choices.map((choice, cIdx) => {
+                              const isCorrectChoice = cIdx === item.answerIndex
+                              const isChosenChoice = cIdx === item.chosenIndex
 
-                            let borderStyle = 'border-neutral-800 bg-neutral-900/50 text-neutral-400'
-                            if (isCorrect) {
-                              borderStyle = 'border-[#00ff41]/50 bg-[#00ff41]/10 text-[#00ff41] font-semibold'
-                            } else if (isChosen) {
-                              borderStyle = 'border-red-500/50 bg-red-500/10 text-red-400 font-semibold'
-                            }
+                              let borderStyle = 'border-neutral-800 bg-neutral-900/50 text-neutral-400'
+                              if (isCorrectChoice) {
+                                borderStyle =
+                                  'border-[#00ff41]/50 bg-[#00ff41]/10 text-[#00ff41] font-semibold'
+                              } else if (isChosenChoice) {
+                                borderStyle =
+                                  'border-red-500/50 bg-red-500/10 text-red-400 font-semibold'
+                              }
 
-                            return (
-                              <div
-                                key={cIdx}
-                                className={`p-2 rounded-lg border flex items-center justify-between text-[11px] ${borderStyle}`}
-                              >
-                                <div className="flex items-center gap-2 flex-1 pr-2">
-                                  <span className="font-mono font-bold text-[10px] w-4">
-                                    {String.fromCharCode(65 + cIdx)}.
-                                  </span>
-                                  <span dangerouslySetInnerHTML={{ __html: renderMath(choice) }} />
+                              return (
+                                <div
+                                  key={cIdx}
+                                  className={`p-2 rounded-lg border flex items-center justify-between text-[11px] ${borderStyle}`}
+                                >
+                                  <div className="flex items-center gap-2 flex-1 pr-2">
+                                    <span className="font-mono font-bold text-[10px] w-4">
+                                      {String.fromCharCode(65 + cIdx)}.
+                                    </span>
+                                    <span dangerouslySetInnerHTML={{ __html: renderMath(choice) }} />
+                                  </div>
+                                  {isCorrectChoice && (
+                                    <CheckCircle2 size={13} className="text-[#00ff41] shrink-0" />
+                                  )}
+                                  {isChosenChoice && !isCorrectChoice && (
+                                    <XCircle size={13} className="text-red-400 shrink-0" />
+                                  )}
                                 </div>
-                                {isCorrect && <CheckCircle2 size={13} className="text-[#00ff41] shrink-0" />}
-                                {isChosen && !isCorrect && <XCircle size={13} className="text-red-400 shrink-0" />}
-                              </div>
-                            )
-                          })}
-                        </div>
-
-                        {/* Explanation */}
-                        {mcq?.explanation && (
-                          <div className="p-2.5 rounded-lg border border-neutral-800 bg-neutral-900/80 text-[11px] text-neutral-300 space-y-1">
-                            <span className="font-bold text-neutral-400 uppercase tracking-wide text-[10px]">
-                              Solution Explanation
-                            </span>
-                            <div
-                              className="leading-relaxed text-neutral-300"
-                              dangerouslySetInnerHTML={{ __html: renderMath(mcq.explanation) }}
-                            />
+                              )
+                            })}
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+
+                          {/* Explanation */}
+                          {mcq?.explanation && (
+                            <div className="p-2.5 rounded-lg border border-neutral-800 bg-neutral-900/80 text-[11px] text-neutral-300 space-y-1">
+                              <span className="font-bold text-neutral-400 uppercase tracking-wide text-[10px]">
+                                Solution Explanation
+                              </span>
+                              <div
+                                className="leading-relaxed text-neutral-300"
+                                dangerouslySetInnerHTML={{ __html: renderMath(mcq.explanation) }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
